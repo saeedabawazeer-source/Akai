@@ -26,21 +26,26 @@ import MixerScreen from './screens/MixerScreen';
 
 const SilverKnob = ({ label, size = 60, onChange, value = 50, onValueChange }) => {
   const knobRef = useRef(null);
+  // Value 0-100 maps to -135 to +135 degrees
   const angle = -135 + (value / 100) * 270;
+  const startY = useRef(0);
+  const startVal = useRef(value);
+
   const handlePointerDown = (e) => {
     e.preventDefault();
+    startY.current = e.clientY;
+    startVal.current = value;
     const move = (ev) => {
-      if (!knobRef.current) return;
-      const rect = knobRef.current.getBoundingClientRect();
-      let rad = Math.atan2(ev.clientY - (rect.top + rect.height/2), ev.clientX - (rect.left + rect.width/2));
-      let deg = rad * (180/Math.PI) + 90;
-      if (deg > 180) deg -= 360;
-      deg = Math.max(-135, Math.min(135, deg));
-      const v = ((deg + 135) / 270) * 100;
-      if (onChange) onChange(v);
-      if (onValueChange) onValueChange(v);
+      const deltaY = startY.current - ev.clientY;
+      let newVal = startVal.current + deltaY * 0.5;
+      newVal = Math.max(0, Math.min(100, newVal));
+      if (onChange) onChange(newVal);
+      if (onValueChange) onValueChange(newVal);
     };
-    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+    const up = () => { 
+      document.removeEventListener('pointermove', move); 
+      document.removeEventListener('pointerup', up); 
+    };
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
   };
@@ -710,7 +715,14 @@ export default function App() {
               <div
                 onPointerDown={(e) => {
                   e.preventDefault();
-                  const move = (ev) => handleDataWheel(ev.movementX);
+                  let lastY = e.clientY;
+                  const move = (ev) => {
+                    const dy = lastY - ev.clientY;
+                    if (Math.abs(dy) > 2) {
+                      handleDataWheel(Math.sign(dy));
+                      lastY = ev.clientY;
+                    }
+                  };
                   const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
                   document.addEventListener('pointermove', move);
                   document.addEventListener('pointerup', up);

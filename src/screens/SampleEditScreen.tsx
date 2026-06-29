@@ -13,6 +13,8 @@ interface SampleEditScreenProps {
   chopMarkers: number[];
   selectedChopMarker: number;
   padAssignments: string[];
+  onAutoChop: () => void;
+  onAddManualChop: (pos: number) => void;
 }
 
 const TABS: SampleEditTab[] = ['Trim', 'Chop', 'Program'];
@@ -24,8 +26,18 @@ const Waveform: React.FC<{
   chopMarkers?: number[];
   selectedChopMarker?: number;
   mode: 'trim' | 'chop';
-}> = ({ audioBuffer, trimStart = 0, trimEnd = 1, chopMarkers = [], selectedChopMarker = -1, mode }) => {
+  onClick?: (pos: number) => void;
+}> = ({ audioBuffer, trimStart = 0, trimEnd = 1, chopMarkers = [], selectedChopMarker = -1, mode, onClick }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!onClick) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const pos = Math.max(0, Math.min(1, x / rect.width));
+    onClick(pos);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -138,7 +150,8 @@ const Waveform: React.FC<{
   return (
     <canvas
       ref={canvasRef}
-      className="w-full rounded-sm"
+      onPointerDown={handlePointerDown}
+      className={`w-full rounded-sm ${onClick ? 'cursor-crosshair' : ''}`}
       style={{ height: '55px' }}
     />
   );
@@ -155,16 +168,18 @@ const SampleEditScreen: React.FC<SampleEditScreenProps> = ({
   chopMarkers,
   selectedChopMarker,
   padAssignments,
+  onAutoChop,
+  onAddManualChop,
 }) => {
   return (
     <div className="w-full h-full flex flex-col font-mono px-2 py-1 select-none">
       {/* Sub-tabs */}
-      <div className="flex gap-1 mb-1">
+      <div className="flex gap-[2px] mb-1">
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveSubTab(tab)}
-            className={`text-[8px] px-2 py-0.5 border transition-colors ${
+            className={`flex-1 text-[8px] py-0.5 border transition-colors ${
               activeSubTab === tab
                 ? 'border-yellow-500/60 text-[#ffef00] bg-yellow-500/10'
                 : 'border-gray-700 text-gray-500 hover:text-gray-300'
@@ -173,7 +188,7 @@ const SampleEditScreen: React.FC<SampleEditScreenProps> = ({
             {tab}
           </button>
         ))}
-        <span className="ml-auto text-[7px] text-gray-600">
+        <span className="ml-1 text-[7px] text-gray-600 flex items-center">
           PAD: {String(activePad + 1).padStart(2, '0')}
         </span>
       </div>
@@ -206,12 +221,14 @@ const SampleEditScreen: React.FC<SampleEditScreenProps> = ({
               chopMarkers={chopMarkers}
               selectedChopMarker={selectedChopMarker}
               mode="chop"
+              onClick={onAddManualChop}
             />
-            <div className="flex justify-between mt-1">
-              <span className="text-[7px] text-gray-400">Auto</span>
-              <span className="text-[7px] text-gray-600">|</span>
-              <span className="text-[7px] text-gray-400">Manual</span>
-              <span className="text-[7px] text-gray-600">|</span>
+            <div className="flex justify-between mt-1 items-center">
+              <div className="flex gap-2">
+                <button onClick={onAutoChop} className="text-[7px] text-gray-400 border border-gray-600 rounded px-1 hover:bg-gray-800">Auto</button>
+                <span className="text-[7px] text-gray-600">|</span>
+                <span className="text-[7px] text-gray-400">Tap Waveform for Manual</span>
+              </div>
               <span className="text-[7px] text-cyan-400">
                 Markers: {chopMarkers.length}
               </span>

@@ -101,7 +101,8 @@ export const stopAudioNodes = (nodes: any) => {
     const g = nodes.gainNode.gain.value;
     nodes.gainNode.gain.cancelScheduledValues(ctx.currentTime);
     nodes.gainNode.gain.setValueAtTime(g, ctx.currentTime);
-    nodes.gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.02);
+    nodes.gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.02);
+    nodes.gainNode.gain.setValueAtTime(0, ctx.currentTime + 0.02);
   }
   if (nodes.source) setTimeout(() => { try { nodes.source.stop(); } catch(e){} }, 25);
 };
