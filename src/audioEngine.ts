@@ -12,13 +12,55 @@ export const getAudioContext = (): AudioContext => {
   return audioCtx;
 };
 
-// ─── Recording ───────────────────────────────────────────
 let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: Blob[] = [];
+let analyserNode: AnalyserNode | null = null;
+let micStream: MediaStream | null = null;
+let sourceNode: MediaStreamAudioSourceNode | null = null;
+
+export const startMicMonitor = async (): Promise<void> => {
+  if (micStream) return;
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const ctx = getAudioContext();
+  sourceNode = ctx.createMediaStreamSource(micStream);
+  analyserNode = ctx.createAnalyser();
+  analyserNode.fftSize = 256;
+  sourceNode.connect(analyserNode);
+};
+
+export const stopMicMonitor = (): void => {
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  if (sourceNode) {
+    sourceNode.disconnect();
+    sourceNode = null;
+  }
+  if (analyserNode) {
+    analyserNode.disconnect();
+    analyserNode = null;
+  }
+};
+
+export const getMicLevel = (): number => {
+  if (!analyserNode) return 0;
+  const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
+  analyserNode.getByteTimeDomainData(dataArray);
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    const val = (dataArray[i] - 128) / 128;
+    sum += val * val;
+  }
+  const rms = Math.sqrt(sum / dataArray.length);
+  // Convert RMS to a percentage roughly (0-100)
+  return Math.min(100, rms * 400); 
+};
 
 export const startRecording = async (): Promise<void> => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
+  await startMicMonitor();
+  if (!micStream) throw new Error("No mic stream");
+  mediaRecorder = new MediaRecorder(micStream);
   recordedChunks = [];
   mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.start();
@@ -35,8 +77,9 @@ export const stopRecording = (): Promise<AudioBuffer> => {
         const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
         resolve(audioBuffer);
       } catch (err) { reject(err); }
-      mediaRecorder?.stream.getTracks().forEach(t => t.stop());
       mediaRecorder = null;
+      // keep monitor active if we are still in Sample Record mode? 
+      // Actually we let the component handle stopMicMonitor when it unmounts or leaves mode
     };
     mediaRecorder.stop();
   });

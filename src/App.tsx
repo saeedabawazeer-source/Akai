@@ -3,7 +3,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mic } from 'lucide-react';
 import {
   getAudioContext, startRecording, stopRecording, autoChop, playSlice,
-  stopAudioNodes, synthFunctions, startSequencer, stopSequencer, isSequencerRunning
+  stopAudioNodes, synthFunctions, startSequencer, stopSequencer, isSequencerRunning,
+  startMicMonitor, stopMicMonitor, getMicLevel
 } from './audioEngine';
 import {
   ScreenMode, PlayMode, PadBank, PadSettings, SequenceTrack,
@@ -23,23 +24,58 @@ import MenuScreen from './screens/MenuScreen';
 
 // ─── Reusable UI Components ─────────────────────────────
 
-const SilverKnob = ({ label, size = 60, onChange, value = 50, onValueChange }) => {
+const SilverKnob = ({ label, size = 60, onChange, value = 50, onValueChange, absoluteCatchup = false }) => {
   const knobRef = useRef(null);
+  const [internalVal, setInternalVal] = useState(value);
+  const [isSynced, setIsSynced] = useState(true);
+
+  useEffect(() => {
+    if (absoluteCatchup) {
+      if (Math.abs(internalVal - value) > 1.5) {
+        setIsSynced(false);
+      }
+    } else {
+      setInternalVal(value);
+    }
+  }, [value, absoluteCatchup]); // do not depend on internalVal
+
   // Value 0-100 maps to -135 to +135 degrees
-  const angle = -135 + (value / 100) * 270;
+  const angle = -135 + ((absoluteCatchup ? internalVal : value) / 100) * 270;
   const startY = useRef(0);
-  const startVal = useRef(value);
+  const startVal = useRef(absoluteCatchup ? internalVal : value);
+  const syncedRef = useRef(isSynced);
+
+  useEffect(() => {
+    syncedRef.current = isSynced;
+  }, [isSynced]);
 
   const handlePointerDown = (e) => {
     e.preventDefault();
     startY.current = e.clientY;
-    startVal.current = value;
+    startVal.current = absoluteCatchup ? internalVal : value;
+    const targetVal = value;
+    
     const move = (ev) => {
       const deltaY = startY.current - ev.clientY;
       let newVal = startVal.current + deltaY * 0.5;
       newVal = Math.max(0, Math.min(100, newVal));
-      if (onChange) onChange(newVal);
-      if (onValueChange) onValueChange(newVal);
+      
+      if (absoluteCatchup) {
+        setInternalVal(newVal);
+        if (!syncedRef.current) {
+          if ((startVal.current <= targetVal && newVal >= targetVal) || (startVal.current >= targetVal && newVal <= targetVal)) {
+            syncedRef.current = true;
+            setIsSynced(true);
+          }
+        }
+        if (syncedRef.current) {
+          if (onChange) onChange(newVal);
+          if (onValueChange) onValueChange(newVal);
+        }
+      } else {
+        if (onChange) onChange(newVal);
+        if (onValueChange) onValueChange(newVal);
+      }
     };
     const up = () => { 
       document.removeEventListener('pointermove', move); 
@@ -48,6 +84,12 @@ const SilverKnob = ({ label, size = 60, onChange, value = 50, onValueChange }) =
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
   };
+  
+  let arrow = '';
+  if (absoluteCatchup && !isSynced) {
+    arrow = internalVal < value ? '▶' : '◀';
+  }
+
   return (
     <div className="flex flex-col items-center">
       <div ref={knobRef} onPointerDown={handlePointerDown}
@@ -58,7 +100,7 @@ const SilverKnob = ({ label, size = 60, onChange, value = 50, onValueChange }) =
           <div className="w-[3px] bg-white shadow-sm rounded-sm mt-1" style={{ height: size*0.35 }}></div>
         </div>
       </div>
-      {label && <span className="text-[10px] font-bold text-black mt-2 tracking-wide uppercase">{label}</span>}
+      {label && <span className="text-[10px] font-bold text-black mt-2 tracking-wide uppercase">{arrow} {label} {arrow === '▶' ? '' : arrow}</span>}
     </div>
   );
 };
@@ -91,6 +133,7 @@ export default function App() {
   // ── Screen navigation ──
   const [screenMode, setScreenMode] = useState<ScreenMode>('SAMPLE');
   const [shiftHeld, setShiftHeld] = useState(false);
+  const [b1Held, setB1Held] = useState(false);
 
   // ── Audio state ──
   const [audioBuffer, setAudioBuffer] = useState(null);
@@ -98,6 +141,7 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const recordingTimerRef = useRef(null);
+  const [micInputLevel, setMicInputLevel] = useState(0);
 
   // ── Pad state ──
   const [activePad, setActivePad] = useState(null);
@@ -218,6 +262,24 @@ export default function App() {
     window.addEventListener('keyup', up);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
   }, [slices, audioBuffer, mainVolume, playMode, padSynthTypes, allPadSettings, screenMode, activeFXPad]);
+
+  // ─── MIC MONITORING ───────────────────────────────────────
+  useEffect(() => {
+    let intervalId: any = null;
+    if (screenMode === 'SAMPLE_RECORD') {
+      startMicMonitor().catch(err => console.error("Mic error:", err));
+      intervalId = setInterval(() => {
+        setMicInputLevel(getMicLevel());
+      }, 50); // poll at 20fps
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      if (screenMode === 'SAMPLE_RECORD') {
+        stopMicMonitor();
+        setMicInputLevel(0);
+      }
+    };
+  }, [screenMode]);
 
   // ─── Pad trigger / release ─────────────────────────────
   const triggerPad = useCallback((id) => {
@@ -513,10 +575,12 @@ export default function App() {
     if (screenMode === 'SAMPLE') {
       if (chopMode) setSelectedChopMarker(prev => Math.max(0, Math.min(chopMarkers.length - 1, prev + Math.sign(dx))));
     }
-    if (screenMode === 'SEQUENCE') setBpm(prev => Math.max(40, Math.min(300, prev + dx * 0.5)));
+    if (screenMode === 'SEQUENCE') {
+      if (b1Held) setBpm(prev => Math.max(40, Math.min(300, prev + dx * 0.5)));
+      // Else could move playhead
+    }
     if (screenMode === 'BROWSER') setSelectedBrowserKit(prev => Math.max(0, Math.min(PRESET_KITS.length - 1, prev + Math.sign(dx))));
     if (screenMode.startsWith('MENU_')) setMenuSelectedIndex(prev => Math.max(0, prev + Math.sign(dx)));
-    
   };
 
   // ─── Knob handlers ────────────────────────────────────
@@ -646,7 +710,7 @@ export default function App() {
         return <SampleScreen {...sampleScreenProps} />;
       case 'SAMPLE_RECORD':
         return <SampleRecordScreen isRecording={isRecording} recordingTime={recordingTime}
-          inputLevel={isRecording ? 60 + Math.random() * 30 : 0} />;
+          inputLevel={micInputLevel} />;
       case 'SEQUENCE':
         return <SequenceScreen currentStep={currentStep}
           isPlaying={isPlaying} seqLength={seqLength} bpm={bpm}
@@ -741,7 +805,7 @@ export default function App() {
           <div className="w-[50%] flex flex-col items-center justify-center">
             {/* B1, B2, B3 Function Buttons above screen */}
             <div className="flex space-x-6 mb-2">
-              <div onClick={handleB1} className="w-14 h-4 rounded-sm border cursor-pointer bg-gradient-to-b from-[#333] to-[#111] border-[#444] shadow-[0_2px_4px_rgba(0,0,0,0.5)] active:translate-y-px active:shadow-none"></div>
+              <div onPointerDown={() => { setB1Held(true); handleB1(); }} onPointerUp={() => setB1Held(false)} onPointerLeave={() => setB1Held(false)} className="w-14 h-4 rounded-sm border cursor-pointer bg-gradient-to-b from-[#333] to-[#111] border-[#444] shadow-[0_2px_4px_rgba(0,0,0,0.5)] active:translate-y-px active:shadow-none"></div>
               <div onClick={handleB2} className="w-14 h-4 rounded-sm border cursor-pointer bg-gradient-to-b from-[#333] to-[#111] border-[#444] shadow-[0_2px_4px_rgba(0,0,0,0.5)] active:translate-y-px active:shadow-none"></div>
               <div onClick={handleB3} className="w-14 h-4 rounded-sm border cursor-pointer bg-gradient-to-b from-[#333] to-[#111] border-[#444] shadow-[0_2px_4px_rgba(0,0,0,0.5)] active:translate-y-px active:shadow-none"></div>
             </div>
@@ -836,9 +900,9 @@ export default function App() {
           {/* Center: Knobs + Pads */}
           <div className="w-[52%] flex flex-col px-4">
             <div className="flex justify-between px-4 mb-4">
-              <SilverKnob label="K1" size={54} value={knobMappings[0]?.value || 50} onChange={handleK1Change} />
-              <SilverKnob label="K2" size={54} value={knobMappings[1]?.value || 50} onChange={handleK2Change} />
-              <SilverKnob label="K3" size={54} value={knobMappings[2]?.value || 50} onChange={handleK3Change} />
+              <SilverKnob label="K1" size={54} value={knobMappings[0]?.value || 50} onChange={handleK1Change} absoluteCatchup={true} />
+              <SilverKnob label="K2" size={54} value={knobMappings[1]?.value || 50} onChange={handleK2Change} absoluteCatchup={true} />
+              <SilverKnob label="K3" size={54} value={knobMappings[2]?.value || 50} onChange={handleK3Change} absoluteCatchup={true} />
             </div>
 
             <div className="flex-grow flex flex-col justify-end pb-4">
@@ -929,6 +993,9 @@ export default function App() {
                     if (isClick) {
                       if (screenMode === 'BROWSER') {
                         loadKit(selectedBrowserKit);
+                        setScreenMode('SAMPLE'); // return to sample mode on load
+                      } else if (screenMode.startsWith('MENU_')) {
+                        // confirm menu item action could go here
                       }
                     }
                   };
