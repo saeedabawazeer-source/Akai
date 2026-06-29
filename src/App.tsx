@@ -3,27 +3,97 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Play, Square, Mic, StopCircle } from 'lucide-react';
 import { getAudioContext, startRecording, stopRecording, autoChop, playSlice, Slice } from './audioEngine';
 
-// Data based on the exact labels from the reference image
+// --- Web Audio API Synthesizer Engine (Original Presets) ---
+const playTone = (ctx, type, pitch, duration, vol = 1) => {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(pitch, ctx.currentTime);
+  gain.gain.setValueAtTime(vol, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + duration);
+};
+
+const playNoise = (ctx, duration, type = 'white', filterFreq = 1000, vol = 1) => {
+  const bufferSize = ctx.sampleRate * duration;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = type === 'highpass' ? 'highpass' : 'bandpass';
+  filter.frequency.value = filterFreq;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(vol, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  noise.start(ctx.currentTime);
+};
+
+const playKick = (ctx, pitch = 150) => {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.setValueAtTime(pitch, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+  gain.gain.setValueAtTime(1, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.5);
+};
+
+const playSnare = (ctx) => {
+  playTone(ctx, 'triangle', 250, 0.2, 0.5);
+  playNoise(ctx, 0.25, 'highpass', 1000, 0.8);
+};
+
+const playHiHat = (ctx, open = false) => playNoise(ctx, open ? 0.3 : 0.05, 'highpass', 5000, 0.5);
+const playTom = (ctx, pitch) => {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.setValueAtTime(pitch, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(pitch * 0.2, ctx.currentTime + 0.3);
+  gain.gain.setValueAtTime(1, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.3);
+};
+const playClap = (ctx) => {
+    playNoise(ctx, 0.02, 'highpass', 1500, 0.5);
+    setTimeout(() => playNoise(ctx, 0.02, 'highpass', 1500, 0.5), 10);
+    setTimeout(() => playNoise(ctx, 0.2, 'highpass', 1500, 0.6), 20);
+};
+
+// Data based on the exact labels from the reference image, now with synth functions attached
 const padData = [
-  { id: 13, label: 'TRIM SAMPLE' },
-  { id: 14, label: 'TIME CORRECT' },
-  { id: 15, label: 'WARP' },
-  { id: 16, label: 'PROJECT' },
+  { id: 13, label: 'TRIM SAMPLE', fn: (ctx) => playNoise(ctx, 0.6, 'highpass', 6000, 0.4) },
+  { id: 14, label: 'TIME CORRECT', fn: (ctx) => playTom(ctx, 300) },
+  { id: 15, label: 'WARP', fn: (ctx) => playTom(ctx, 200) },
+  { id: 16, label: 'PROJECT', fn: (ctx) => playTom(ctx, 100) },
   
-  { id: 9, label: 'FADER' },
-  { id: 10, label: 'MIC QUANTIZE' },
-  { id: 11, label: 'RESAMPLE' },
-  { id: 12, label: 'SONG' },
+  { id: 9, label: 'FADER', fn: (ctx) => playHiHat(ctx, true) },
+  { id: 10, label: 'MIC QUANTIZE', fn: (ctx) => playHiHat(ctx, false) },
+  { id: 11, label: 'RESAMPLE', fn: (ctx) => playClap(ctx) },
+  { id: 12, label: 'SONG', fn: (ctx) => { playTone(ctx, 'square', 300, 0.15); playNoise(ctx, 0.2, 'highpass', 2000, 0.6); } },
   
-  { id: 5, label: 'COMPRESSOR' },
-  { id: 6, label: 'HALF SPEED' },
-  { id: 7, label: 'DOUBLE SPEED' },
-  { id: 8, label: 'MIDI CONFIG' },
+  { id: 5, label: 'COMPRESSOR', fn: (ctx) => playKick(ctx, 180) },
+  { id: 6, label: 'HALF SPEED', fn: (ctx) => playKick(ctx, 120) },
+  { id: 7, label: 'DOUBLE SPEED', fn: (ctx) => playTone(ctx, 'sine', 800, 0.05, 1) },
+  { id: 8, label: 'MIDI CONFIG', fn: (ctx) => playSnare(ctx) },
   
-  { id: 1, label: 'FULL LEVEL', isYellow: true },
-  { id: 2, label: 'HALF SEQ' },
-  { id: 3, label: 'DOUBLE SEQ' },
-  { id: 4, label: 'COUNT-IN' },
+  { id: 1, label: 'FULL LEVEL', fn: (ctx) => playKick(ctx, 150), isYellow: true },
+  { id: 2, label: 'HALF SEQ', fn: (ctx) => playKick(ctx, 100) },
+  { id: 3, label: 'DOUBLE SEQ', fn: (ctx) => playTone(ctx, 'triangle', 65.41, 0.5, 0.8) },
+  { id: 4, label: 'COUNT-IN', fn: (ctx) => playTone(ctx, 'triangle', 73.42, 0.5, 0.8) },
 ];
 
 const SilverKnob = ({ label, size = 60, markerAngle = -45, onChange, value = 50 }) => {
@@ -48,14 +118,10 @@ const SilverKnob = ({ label, size = 60, markerAngle = -45, onChange, value = 50 
     let rad = Math.atan2(dy, dx);
     let deg = rad * (180 / Math.PI) + 90;
     
-    // Normalize to -180 to 180
     if (deg > 180) deg -= 360;
-    
-    // Clamp between -135 and 135
     if (deg < -135) deg = -135;
     if (deg > 135) deg = 135;
 
-    // Convert back to 0-100
     const newValue = ((deg + 135) / 270) * 100;
     if (onChange) onChange(newValue);
   };
@@ -77,12 +143,10 @@ const SilverKnob = ({ label, size = 60, markerAngle = -45, onChange, value = 50 
           border: '1px solid #a0a0a0'
         }}
       >
-        {/* Inner raised cap */}
         <div 
           className="rounded-full bg-gradient-to-br from-[#eef0f2] to-[#b4b6ba] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8),0_1px_2px_rgba(0,0,0,0.4)] relative flex justify-center"
           style={{ width: size * 0.75, height: size * 0.75, transform: `rotate(${angle}deg)` }}
         >
-           {/* Indicator line */}
            <div className="w-[3px] bg-white shadow-sm rounded-sm mt-1" style={{ height: size * 0.35 }}></div>
         </div>
       </div>
@@ -120,9 +184,20 @@ const MPCButton = ({ children, color = 'gray', label, subLabel, width = 'w-16', 
   );
 };
 
-// Canvas Waveform Renderer
+// Canvas Waveform Renderer or Fake Waveform
 const Waveform = ({ buffer, slices, activePad }) => {
   const canvasRef = useRef(null);
+  
+  // State for fake waveform animation
+  const [fakeData, setFakeData] = useState([]);
+  
+  useEffect(() => {
+    if (buffer) return;
+    const interval = setInterval(() => {
+        setFakeData(Array.from({length: 40}, () => Math.random() * 80 + 10));
+    }, 100);
+    return () => clearInterval(interval);
+  }, [buffer]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -131,10 +206,8 @@ const Waveform = ({ buffer, slices, activePad }) => {
     const width = canvas.width;
     const height = canvas.height;
 
-    // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    // Draw waveform
     const data = buffer.getChannelData(0);
     const step = Math.ceil(data.length / width);
     const amp = height / 2;
@@ -151,11 +224,9 @@ const Waveform = ({ buffer, slices, activePad }) => {
       ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
     }
 
-    // Center line
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillRect(0, amp, width, 1);
 
-    // Draw slices
     if (slices && slices.length > 0) {
       slices.forEach((slice) => {
         const startX = (slice.start / buffer.duration) * width;
@@ -170,7 +241,6 @@ const Waveform = ({ buffer, slices, activePad }) => {
         }
       });
     }
-
   }, [buffer, slices, activePad]);
 
   return (
@@ -178,7 +248,20 @@ const Waveform = ({ buffer, slices, activePad }) => {
       {buffer ? (
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       ) : (
-        <div className="flex items-center justify-center w-full h-full text-[#555] font-bold text-xs uppercase">No Sample Loaded</div>
+        <div className="absolute inset-0 flex flex-col justify-center space-y-1">
+             <div className="h-10 relative flex items-center overflow-hidden">
+                  <div className="absolute inset-0 flex items-center justify-between px-1">
+                     {fakeData.map((h, i) => <div key={i} className="w-1 bg-[#ffef00]" style={{ height: `${h}%` }}></div>)}
+                  </div>
+                  <div className="w-full h-[1px] bg-white/30 absolute"></div>
+             </div>
+             <div className="h-10 relative flex items-center overflow-hidden">
+                  <div className="absolute inset-0 flex items-center justify-between px-1">
+                     {fakeData.map((h, i) => <div key={i} className="w-1 bg-[#ffef00]" style={{ height: `${h}%` }}></div>)}
+                  </div>
+                  <div className="w-full h-[1px] bg-white/30 absolute"></div>
+             </div>
+        </div>
       )}
     </div>
   );
@@ -191,10 +274,9 @@ export default function App() {
   
   const [activePad, setActivePad] = useState(null);
   const [activeTab, setActiveTab] = useState('Trim');
-  const [mainVolume, setMainVolume] = useState(80); // 0-100
-  const [dataWheel, setDataWheel] = useState(50); // 0-100
+  const [mainVolume, setMainVolume] = useState(80);
+  const [dataWheel, setDataWheel] = useState(50);
 
-  // Keyboard mapping
   useEffect(() => {
     const keyMap = { '1': 13, '2': 14, '3': 15, '4': 16, 'q': 9, 'w': 10, 'e': 11, 'r': 12, 'a': 5, 's': 6, 'd': 7, 'f': 8, 'z': 1, 'x': 2, 'c': 3, 'v': 4 };
     const handleKeyDown = (e) => { const padId = keyMap[e.key.toLowerCase()]; if (padId && !e.repeat) triggerPad(padId); };
@@ -206,12 +288,18 @@ export default function App() {
 
   const triggerPad = (id) => {
     setActivePad(id);
-    if (!audioBuffer || slices.length === 0) return;
     
+    // Check if we have a real slice for this pad
     const slice = slices.find(s => s.id === id);
-    if (slice) {
-      // mainVolume is 0-100, scale to 0-1.5
+    if (slice && audioBuffer) {
       playSlice(audioBuffer, slice.start, slice.end, mainVolume / 66);
+    } else {
+      // Fallback to preset synth sounds
+      const pad = padData.find(p => p.id === id);
+      if (pad && pad.fn) {
+        const ctx = getAudioContext();
+        pad.fn(ctx);
+      }
     }
   };
 
@@ -228,7 +316,7 @@ export default function App() {
     } else {
       const buffer = await stopRecording();
       setAudioBuffer(buffer);
-      setSlices([]); // reset slices on new recording
+      setSlices([]);
       setIsRecording(false);
     }
   };
@@ -239,38 +327,18 @@ export default function App() {
     setSlices(newSlices);
   };
 
-  // Adjust trim points of active pad using Data Wheel
   useEffect(() => {
     if (!activePad || slices.length === 0 || activeTab !== 'Trim') return;
-    
-    // Scale dataWheel 0-100 to slightly adjust the slice end point.
-    // In a real MPC, the data wheel spins infinitely to change numbers. 
-    // Here we map it roughly to a small percentage shift just to demonstrate interactivity.
-    const sliceIndex = slices.findIndex(s => s.id === activePad);
-    if (sliceIndex > -1) {
-      const newSlices = [...slices];
-      const slice = newSlices[sliceIndex];
-      const duration = slice.end - slice.start;
-      // modify end point by max +/- 10%
-      const offset = (dataWheel - 50) / 50 * (duration * 0.1); 
-      // We aren't doing deep state binding here to avoid infinite loops, 
-      // but the dataWheel state proves the knob is wired up.
-    }
   }, [dataWheel]);
 
   return (
     <div className="min-h-screen w-full bg-[#ffc300] flex items-center justify-center py-10 font-sans select-none touch-none">
-      
-      {/* Chassis */}
       <div 
         className="w-[95vw] max-w-[850px] bg-[#e4e5e8] rounded-t-xl rounded-b-xl shadow-[0_30px_60px_rgba(0,0,0,0.4)] flex flex-col relative"
         style={{ aspectRatio: '1 / 1.1' }}
       >
-        
-        {/* --- TOP BLACK PANEL --- */}
         <div className="h-[30%] bg-[#121212] rounded-t-xl flex flex-row items-center justify-between p-6 relative border-b-4 border-[#333]">
           
-          {/* Logo & Main Volume */}
           <div className="w-[25%] flex flex-col items-center justify-center relative">
             <div className="absolute top-0 left-0 flex flex-col">
               <span className="text-[#e21836] font-serif font-black text-4xl tracking-tighter" style={{ transform: 'scale(1.2, 1)'}}>AKAI</span>
@@ -283,14 +351,12 @@ export default function App() {
             <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-4 h-1.5 bg-[#00ffff] rounded-sm shadow-[0_0_10px_#00ffff]"></div>
           </div>
 
-          {/* Screen & Metering */}
           <div className="w-[50%] flex flex-col items-center justify-center">
             <div className="flex space-x-6 mb-2">
               {[1,2,3].map(i => <div key={i} className="w-10 h-3 bg-gradient-to-b from-[#222] to-[#111] rounded-sm border border-[#333]"></div>)}
             </div>
             
             <div className="flex flex-row items-stretch w-full space-x-4">
-                {/* LCD Screen */}
                 <div className="flex-grow bg-[#151515] border-4 border-black rounded-sm h-[140px] p-2 flex flex-col relative overflow-hidden">
                     <div className="flex justify-around text-white text-[10px] font-bold border-b border-white/20 pb-1">
                         {['Trim', 'Tune', 'Filter'].map(tab => (
@@ -299,14 +365,14 @@ export default function App() {
                     </div>
                     <div className="text-yellow-400 text-[9px] font-mono mt-1 flex space-x-2 items-center">
                         <span className="font-bold">A01</span>
-                        <span>{isRecording ? "** RECORDING **" : audioBuffer ? "Mic Sample 01" : "Empty"}</span>
+                        <span>{isRecording ? "** RECORDING **" : audioBuffer ? "Mic Sample 01" : "Break-Bite Drum 01"}</span>
                         <div className="flex space-x-1 ml-auto">
                             <span className="bg-white/20 px-1">♫</span>
-                            <span className="bg-white/20 px-1">{slices.length > 0 ? "CHOP" : "RAW"}</span>
+                            <span className="bg-white/20 px-1">{audioBuffer && slices.length > 0 ? "CHOP" : "1/4"}</span>
                         </div>
                     </div>
                     
-                    {/* Real Waveform Renderer */}
+                    {/* Hybrid Waveform Renderer */}
                     <Waveform buffer={audioBuffer} slices={slices} activePad={activePad} />
 
                     <div className="flex justify-between text-white text-[8px] font-bold">
@@ -317,7 +383,6 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* LED Meters */}
                 <div className="w-6 flex flex-col justify-end space-y-[2px] pb-2">
                      {[...Array(6)].map((_, i) => (
                          <div key={i} className="flex space-x-1">
@@ -329,7 +394,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Panel: Title & Speaker */}
           <div className="w-[25%] flex flex-col items-end h-full pt-2">
              <span className="text-[#e21836] font-bold text-xl tracking-widest uppercase">MPC Sample</span>
              <div className="mt-4 w-32 h-[120px] bg-[#1a1a1a] rounded-sm border-[3px] border-[#222] shadow-[inset_0_5px_10px_rgba(0,0,0,1)] relative overflow-hidden">
@@ -340,7 +404,6 @@ export default function App() {
         </div>
 
         <div className="flex-grow flex flex-row p-6 pt-4 relative">
-            {/* LEFT COLUMN: Controls */}
             <div className="w-[22%] flex flex-col space-y-6">
                 <div className="flex flex-col items-center">
                     <span className="text-[8px] text-[#888] font-bold mb-1 tracking-widest">MODE</span>
@@ -373,7 +436,6 @@ export default function App() {
                 </div>
             </div>
 
-            {/* CENTER COLUMN: Knobs & Pads */}
             <div className="w-[52%] flex flex-col px-4">
                 <div className="flex justify-between px-4 mb-4">
                     <SilverKnob label="K1" size={54} />
@@ -381,7 +443,6 @@ export default function App() {
                     <SilverKnob label="K3" size={54} />
                 </div>
 
-                {/* 4x4 PAD GRID */}
                 <div className="flex-grow flex flex-col justify-end pb-4">
                     <div className="grid grid-cols-4 grid-rows-4 gap-3">
                         {padData.map((pad) => {
@@ -390,7 +451,6 @@ export default function App() {
                                 ? (isActive ? 'border-[#ffea00] shadow-[0_0_15px_#ffea00]' : 'border-[#d4c535]')
                                 : (isActive ? 'border-[#00e5ff] shadow-[0_0_15px_#00e5ff]' : 'border-[#00a3e0]');
                             
-                            // Check if this pad has an assigned slice
                             const hasSlice = slices.find(s => s.id === pad.id);
                             
                             return (
@@ -419,7 +479,6 @@ export default function App() {
                 </div>
             </div>
 
-            {/* RIGHT COLUMN: Controls */}
             <div className="w-[26%] flex flex-col space-y-4">
                 <div className="flex flex-col items-center">
                     <span className="text-[8px] text-[#888] font-bold mb-1 tracking-widest">PAD PLAY</span>
@@ -436,10 +495,8 @@ export default function App() {
                     <MPCButton subLabel="METRO" color="gray">TAP<br/>TEMPO</MPCButton>
                 </div>
 
-                {/* Data Wheel */}
                 <div className="flex justify-end items-center pr-2 py-2 relative">
                      <Mic size={16} className={`absolute left-6 ${isRecording ? 'text-red-500 animate-pulse' : 'text-black opacity-80'}`} />
-                     
                      <div 
                         onPointerDown={(e) => {
                             e.preventDefault();
