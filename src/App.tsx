@@ -12,7 +12,7 @@ import {
 
 // Lazy screen imports
 import MainScreen from './screens/MainScreen';
-import SampleEditScreen from './screens/SampleEditScreen';
+import SampleScreen from './screens/SampleScreen';
 import SampleRecordScreen from './screens/SampleRecordScreen';
 import SequenceScreen from './screens/SequenceScreen';
 import SongScreen from './screens/SongScreen';
@@ -20,6 +20,7 @@ import PadFXScreen from './screens/PadFXScreen';
 import KnobFXScreen from './screens/KnobFXScreen';
 import ProgramEditScreen from './screens/ProgramEditScreen';
 import BrowserScreen from './screens/BrowserScreen';
+import MenuScreen from './screens/MenuScreen';
 import MixerScreen from './screens/MixerScreen';
 
 // ─── Reusable UI Components ─────────────────────────────
@@ -160,6 +161,9 @@ export default function App() {
 
   // ── Browser state ──
   const [selectedBrowserKit, setSelectedBrowserKit] = useState(0);
+  const [browserPreviewOn, setBrowserPreviewOn] = useState(true);
+  const [browserDrive, setBrowserDrive] = useState<'Internal' | 'External'>('Internal');
+  const [menuSelectedIndex, setMenuSelectedIndex] = useState(0);
 
   // ── Note Repeat ──
   const [noteRepeat, setNoteRepeat] = useState(false);
@@ -296,6 +300,35 @@ export default function App() {
     }
   }, [playMode, activePad, screenMode]);
 
+  // ─── Function Buttons (B1, B2, B3) ────────────────────
+  const handleB1 = () => {
+    if (screenMode === 'BROWSER' || screenMode.startsWith('MENU_')) {
+      setScreenMode('SAMPLE'); // Back button
+    } else if (screenMode === 'SAMPLE') {
+      const cycle: any[] = ['Trim', 'Mix', 'Amp Env'];
+      setSampleCol1(prev => cycle[(cycle.indexOf(prev) + 1) % 3]);
+      setActiveSampleCol(1);
+    }
+  };
+  const handleB2 = () => {
+    if (screenMode === 'BROWSER') {
+      setBrowserDrive(prev => prev === 'Internal' ? 'External' : 'Internal');
+    } else if (screenMode === 'SAMPLE') {
+      const cycle: any[] = ['Tune', 'Play'];
+      setSampleCol2(prev => cycle[(cycle.indexOf(prev) + 1) % 2]);
+      setActiveSampleCol(2);
+    }
+  };
+  const handleB3 = () => {
+    if (screenMode === 'BROWSER') {
+      setBrowserPreviewOn(!browserPreviewOn);
+    } else if (screenMode === 'SAMPLE') {
+      const cycle: any[] = ['Filter', 'Filt Env'];
+      setSampleCol3(prev => cycle[(cycle.indexOf(prev) + 1) % 2]);
+      setActiveSampleCol(3);
+    }
+  };
+
   // ─── Button handlers ──────────────────────────────────
   const consumeShift = () => {
     if (shiftHeld) setShiftHeld(false);
@@ -347,15 +380,18 @@ export default function App() {
 
   const handleChop = () => {
     if (shiftHeld) {
-      setScreenMode('MIXER');
+      setPlayMode('NOTE ON'); // SHIFT + CHOP = NOTE ON
       consumeShift();
     } else {
-      if (audioBuffer) {
-        const newSlices = autoChop(audioBuffer, 16);
-        setSlices(newSlices);
-        setChopMarkers(newSlices.map(s => s.start));
-        setScreenMode('SAMPLE_EDIT');
-        setSampleEditTab('Chop');
+      setChopMode(!chopMode);
+      setScreenMode('SAMPLE');
+      if (!chopMode && audioBuffer) {
+        // Just entering chop mode
+        if (chopMarkers.length === 0) {
+          const newSlices = autoChop(audioBuffer, 16);
+          setSlices(newSlices);
+          setChopMarkers(newSlices.map(s => s.start));
+        }
       }
     }
   };
@@ -458,30 +494,64 @@ export default function App() {
 
   // ─── Data Wheel handler ────────────────────────────────
   const handleDataWheel = (dx) => {
-    if (screenMode === 'SAMPLE_EDIT') {
-      if (sampleEditTab === 'Trim') setTrimEnd(prev => Math.max(0, Math.min(100, prev + dx)));
-      if (sampleEditTab === 'Chop') setSelectedChopMarker(prev => Math.max(0, Math.min(chopMarkers.length - 1, prev + Math.sign(dx))));
+    if (screenMode === 'SAMPLE') {
+      if (chopMode) setSelectedChopMarker(prev => Math.max(0, Math.min(chopMarkers.length - 1, prev + Math.sign(dx))));
     }
     if (screenMode === 'SEQUENCE') setBpm(prev => Math.max(40, Math.min(300, prev + dx * 0.5)));
     if (screenMode === 'BROWSER') setSelectedBrowserKit(prev => Math.max(0, Math.min(PRESET_KITS.length - 1, prev + Math.sign(dx))));
-    if (screenMode === 'PROGRAM_EDIT') {
-      if (programEditTab === 'Tune') {
-        setAllPadSettings(prev => prev.map((s, i) => i === (activePad||1)-1 ? { ...s, tune: Math.max(-24, Math.min(24, s.tune + Math.sign(dx))) } : s));
-      }
-      if (programEditTab === 'Filter') {
-        setAllPadSettings(prev => prev.map((s, i) => i === (activePad||1)-1 ? { ...s, filterFreq: Math.max(20, Math.min(20000, s.filterFreq + dx * 100)) } : s));
-      }
-    }
-    if (screenMode === 'MIXER') {
-      const padIdx = (activePad || 1) - 1;
-      setAllPadSettings(prev => prev.map((s, i) => i === padIdx ? { ...s, volume: Math.max(0, Math.min(100, s.volume + dx)) } : s));
-    }
+    if (screenMode.startsWith('MENU_')) setMenuSelectedIndex(prev => Math.max(0, prev + Math.sign(dx)));
+    
   };
 
   // ─── Knob handlers ────────────────────────────────────
-  const handleK1Change = (v) => setKnobMappings(prev => prev.map((k, i) => i === 0 ? { ...k, value: v } : k));
-  const handleK2Change = (v) => setKnobMappings(prev => prev.map((k, i) => i === 1 ? { ...k, value: v } : k));
-  const handleK3Change = (v) => setKnobMappings(prev => prev.map((k, i) => i === 2 ? { ...k, value: v } : k));
+  const handleK1Change = (v) => {
+    if (screenMode === 'SAMPLE') {
+      if (chopMode) { /* K1 = Slice Start (placeholder) */ }
+      else if (activeSampleCol === 1) {
+        if (sampleCol1 === 'Trim') setTrimStart(v / 100);
+        if (sampleCol1 === 'Mix') updatePadSetting('volume', v);
+        if (sampleCol1 === 'Amp Env') updatePadSetting('attack', (v / 100) * 2);
+      } else if (activeSampleCol === 2) {
+        if (sampleCol2 === 'Tune') updatePadSetting('tune', Math.floor((v / 100) * 48) - 24);
+        if (sampleCol2 === 'Play') { /* Polyphony - enum */ }
+      } else if (activeSampleCol === 3) {
+        if (sampleCol3 === 'Filter') updatePadSetting('filterFreq', 20 + Math.pow(v / 100, 2) * 19980);
+        if (sampleCol3 === 'Filt Env') { /* filter env attack */ }
+      }
+    }
+  };
+  const handleK2Change = (v) => {
+    if (screenMode === 'SAMPLE') {
+      if (chopMode) { /* K2 = Slice End */ }
+      else if (activeSampleCol === 1) {
+        if (sampleCol1 === 'Trim') setTrimEnd(v / 100);
+        if (sampleCol1 === 'Mix') { /* kit volume */ }
+        if (sampleCol1 === 'Amp Env') { playMode === 'NOTE ON' ? updatePadSetting('release', (v/100)*5) : updatePadSetting('decay', (v/100)*2); }
+      } else if (activeSampleCol === 2) {
+        if (sampleCol2 === 'Tune') { /* fine tune */ }
+        if (sampleCol2 === 'Play') { /* Mute group */ }
+      } else if (activeSampleCol === 3) {
+        if (sampleCol3 === 'Filter') updatePadSetting('filterRes', (v / 100) * 20);
+        if (sampleCol3 === 'Filt Env') { /* filter env decay */ }
+      }
+    }
+  };
+  const handleK3Change = (v) => {
+    if (screenMode === 'SAMPLE') {
+      if (chopMode) { /* K3 = Chop Type */ }
+      else if (activeSampleCol === 1) {
+        if (sampleCol1 === 'Trim') { /* loop point */ }
+        if (sampleCol1 === 'Mix') updatePadSetting('pan', Math.floor((v / 100) * 100) - 50);
+        if (sampleCol1 === 'Amp Env') { /* vel sens */ }
+      } else if (activeSampleCol === 2) {
+        if (sampleCol2 === 'Tune') { /* warp */ }
+        if (sampleCol2 === 'Play') { /* offset */ }
+      } else if (activeSampleCol === 3) {
+        if (sampleCol3 === 'Filter') { /* filter type */ }
+        if (sampleCol3 === 'Filt Env') { /* depth */ }
+      }
+    }
+  };
 
   // ─── Browser load kit ─────────────────────────────────
   const loadKit = (kitIdx) => {
@@ -524,9 +594,9 @@ export default function App() {
         return <SampleRecordScreen isRecording={isRecording} recordingTime={recordingTime}
           inputLevel={isRecording ? 60 + Math.random() * 30 : 0} />;
       case 'SEQUENCE':
-        return <SequenceScreen tracks={tracks.slice(0, 4)} currentStep={currentStep}
+        return <SequenceScreen currentStep={currentStep}
           isPlaying={isPlaying} seqLength={seqLength} bpm={bpm}
-          currentSeq={currentSeq} onToggleStep={toggleStep} totalSequences={totalSequences} />;
+          currentSeq={currentSeq} />;
       case 'SONG':
         return <SongScreen songSequences={songSequences} currentSongStep={currentSongStep}
           isPlaying={isPlaying} totalSequences={totalSequences} />;
@@ -541,9 +611,12 @@ export default function App() {
           activeSubTab={programEditTab} setActiveSubTab={setProgramEditTab}
           onUpdatePadSetting={updatePadSetting} />;
       case 'BROWSER':
-        return <BrowserScreen presetKits={PRESET_KITS} selectedKit={selectedBrowserKit}
-          selectedPad={activePad || 1} onSelectKit={setSelectedBrowserKit}
-          onLoadKit={loadKit} />;
+        return <BrowserScreen
+          presetKits={PRESET_KITS}
+          selectedKit={selectedBrowserKit}
+          isPreviewOn={browserPreviewOn}
+          drive={browserDrive}
+        />;
       case 'MIXER':
         return <MixerScreen padSettings={allPadSettings} activePad={activePad || 1}
           onUpdateVolume={(id, v) => setAllPadSettings(prev => prev.map((s, i) => i === id-1 ? { ...s, volume: v } : s))}
@@ -587,15 +660,11 @@ export default function App() {
 
           {/* Center: Screen */}
           <div className="w-[50%] flex flex-col items-center justify-center">
-            {/* Play mode buttons above screen */}
+            {/* B1, B2, B3 Function Buttons above screen */}
             <div className="flex space-x-6 mb-2">
-              {modes.map((mode) => (
-                <div key={mode} onClick={() => setPlayMode(mode)}
-                  className={`w-14 h-4 rounded-sm border cursor-pointer flex items-center justify-center text-[7px] font-bold
-                  ${playMode === mode ? 'bg-red-600 border-red-400 text-white shadow-[0_0_8px_red]' : 'bg-gradient-to-b from-[#333] to-[#111] border-[#444] text-[#888]'}`}>
-                  {mode}
-                </div>
-              ))}
+              <div onClick={handleB1} className="w-14 h-4 rounded-sm border cursor-pointer bg-gradient-to-b from-[#333] to-[#111] border-[#444] shadow-[0_2px_4px_rgba(0,0,0,0.5)] active:translate-y-px active:shadow-none"></div>
+              <div onClick={handleB2} className="w-14 h-4 rounded-sm border cursor-pointer bg-gradient-to-b from-[#333] to-[#111] border-[#444] shadow-[0_2px_4px_rgba(0,0,0,0.5)] active:translate-y-px active:shadow-none"></div>
+              <div onClick={handleB3} className="w-14 h-4 rounded-sm border cursor-pointer bg-gradient-to-b from-[#333] to-[#111] border-[#444] shadow-[0_2px_4px_rgba(0,0,0,0.5)] active:translate-y-px active:shadow-none"></div>
             </div>
 
             <div className="flex flex-row items-stretch w-full space-x-4">
@@ -635,10 +704,10 @@ export default function App() {
             <div className="flex flex-col items-center">
               <span className="text-[8px] text-[#888] font-bold mb-1 tracking-widest">MODE</span>
               <div className="grid grid-cols-2 gap-3 w-full">
-                <MPCButton subLabel="INPUT CONFIG" color="gray" onClick={handleSampleButton} active={screenMode === 'SAMPLE_EDIT' || screenMode === 'PROGRAM_EDIT'}>SAMPLE</MPCButton>
-                <MPCButton subLabel="STEP EDIT" color="gray" onClick={handleSeqButton} active={screenMode === 'SEQUENCE' || screenMode === 'SONG'}>SEQ</MPCButton>
-                <MPCButton subLabel="FLEX BEAT" color="orange" onClick={handlePadFXButton} active={screenMode === 'PAD_FX'}>PAD<br/>FX</MPCButton>
-                <MPCButton subLabel="FX SELECT" color="orange" onClick={handleKnobFXButton} active={screenMode === 'KNOB_FX'}>KNOB<br/>FX</MPCButton>
+                <MPCButton subLabel="INPUT CONFIG" color="gray" onClick={handleSampleButton} active={screenMode === 'SAMPLE' || screenMode === 'MENU_INPUT_CONFIG'}>SAMPLE</MPCButton>
+                <MPCButton subLabel="STEP EDIT" color="gray" onClick={handleSeqButton} active={screenMode === 'SEQUENCE' || screenMode === 'STEP_EDIT'}>SEQ</MPCButton>
+                <MPCButton subLabel="FLEX BEAT" color="orange" onClick={handlePadFXButton} active={screenMode === 'PAD_FX' || screenMode === 'FLEX_BEAT'}>PAD<br/>FX</MPCButton>
+                <MPCButton subLabel="FX SELECT" color="orange" onClick={handleKnobFXButton} active={screenMode === 'KNOB_FX' || screenMode === 'KNOB_FX_SELECT'}>KNOB<br/>FX</MPCButton>
               </div>
             </div>
 
@@ -766,7 +835,12 @@ export default function App() {
                   document.addEventListener('pointermove', move);
                   document.addEventListener('pointerup', up);
                 }}
-                className="w-[75px] h-[75px] rounded-full shadow-[0_8px_15px_rgba(0,0,0,0.3)] bg-gradient-to-b from-[#e8e9eb] to-[#b0b1b4] border border-[#a0a0a0] flex items-center justify-center cursor-ew-resize touch-none">
+                className="w-[75px] h-[75px] rounded-full shadow-[0_8px_15px_rgba(0,0,0,0.3)] bg-gradient-to-b from-[#e8e9eb] to-[#b0b1b4] border border-[#a0a0a0] flex items-center justify-center cursor-ns-resize touch-none active:scale-[0.98] transition-transform"
+                onClick={() => {
+                  if (screenMode === 'BROWSER') {
+                    loadKit(selectedBrowserKit);
+                  }
+                }}>
                 <div className="w-12 h-12 rounded-full shadow-[inset_0_4px_6px_rgba(0,0,0,0.2)] bg-[#d4d5d8] border border-white/50 relative">
                   <div className="absolute top-2 left-2 w-3 h-3 rounded-full shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] bg-[#c0c1c4]"></div>
                 </div>

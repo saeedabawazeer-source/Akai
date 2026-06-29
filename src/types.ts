@@ -1,21 +1,33 @@
 // Shared types for MPC state management
 
 export type ScreenMode = 
-  | 'MAIN' 
-  | 'SAMPLE_EDIT' 
+  | 'SAMPLE' 
   | 'SAMPLE_RECORD' 
   | 'SEQUENCE' 
+  | 'STEP_EDIT'
   | 'SONG' 
   | 'PAD_FX' 
+  | 'FLEX_BEAT'
   | 'KNOB_FX' 
-  | 'PROGRAM_EDIT' 
+  | 'KNOB_FX_SELECT'
   | 'BROWSER' 
-  | 'MIXER';
+  | 'MENU_INPUT_CONFIG'
+  | 'MENU_FADER'
+  | 'MENU_TIME_CORRECT'
+  | 'MENU_MIDI_CONFIG'
+  | 'MENU_PROJECT'
+  | 'MENU_COMPRESSOR';
+
+export type SampleColumn1 = 'Trim' | 'Mix' | 'Amp Env';
+export type SampleColumn2 = 'Tune' | 'Play';
+export type SampleColumn3 = 'Filter' | 'Filt Env';
+export type ActiveSampleColumn = 1 | 2 | 3;
+
 
 export type PlayMode = 'ONE SHOT' | 'NOTE ON' | 'LOOP';
 export type PadBank = 'A' | 'B' | 'C' | 'D';
-export type SampleEditTab = 'Trim' | 'Chop' | 'Program';
-export type ProgramEditTab = 'Layer' | 'Tune' | 'Filter' | 'Amp';
+
+
 
 export interface Slice {
   id: number;
