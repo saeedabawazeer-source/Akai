@@ -204,6 +204,21 @@ export default function App() {
     setActivePad(id);
     if (activeNodesRef.current[id]) stopAudioNodes(activeNodesRef.current[id]);
 
+    if (noteRepeat) {
+      if (noteRepeatRef.current) clearInterval(noteRepeatRef.current);
+      const intervalMs = (60000 / bpm) / 4; // 16th notes
+      noteRepeatRef.current = setInterval(() => {
+        // We need a helper to actually play the sound without resetting activePad state loops
+        playPadSound(id);
+      }, intervalMs);
+    }
+
+    playPadSound(id);
+  }, [slices, audioBuffer, mainVolume, playMode, padSynthTypes, allPadSettings, screenMode, effects, muteMode, isSeqRecording, currentStep, sixteenLevels, sixteenLevelsPad, noteRepeat, bpm]);
+
+  const playPadSound = (id) => {
+    if (activeNodesRef.current[id]) stopAudioNodes(activeNodesRef.current[id]);
+
     // In PAD FX mode, toggling effects
     if (screenMode === 'PAD_FX') {
       const fxIdx = id - 1;
@@ -263,10 +278,14 @@ export default function App() {
     }
 
     if (nodes) activeNodesRef.current[id] = nodes;
-  }, [slices, audioBuffer, mainVolume, playMode, padSynthTypes, allPadSettings, screenMode, effects, muteMode, isSeqRecording, currentStep, sixteenLevels, sixteenLevelsPad]);
+  };
 
   const releasePad = useCallback((id) => {
     setActivePad(null);
+    if (noteRepeatRef.current) {
+      clearInterval(noteRepeatRef.current);
+      noteRepeatRef.current = null;
+    }
     if (screenMode === 'PAD_FX') { setActiveFXPad(null); return; }
     if (playMode === 'NOTE ON' || playMode === 'LOOP') {
       const i = id || activePad;
@@ -631,9 +650,29 @@ export default function App() {
 
             {/* Fader slider */}
             <div className="flex-grow flex items-center justify-center relative">
-              <div className="h-40 w-8 bg-gradient-to-b from-[#2a2a2a] to-[#4a4a4a] rounded-sm shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] relative flex justify-center">
+              <div 
+                className="h-40 w-8 bg-gradient-to-b from-[#2a2a2a] to-[#4a4a4a] rounded-sm shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] relative flex justify-center cursor-ns-resize"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const startY = e.clientY;
+                  const startVol = mainVolume;
+                  const move = (ev) => {
+                    const deltaY = startY - ev.clientY; // positive if moving up
+                    const pctChange = (deltaY / rect.height) * 100;
+                    const newVol = Math.max(0, Math.min(100, startVol + pctChange));
+                    setMainVolume(newVol);
+                  };
+                  const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+                  document.addEventListener('pointermove', move);
+                  document.addEventListener('pointerup', up);
+                }}
+              >
                 <div className="w-1.5 h-full bg-black/50 absolute"></div>
-                <div className="absolute top-[40%] w-12 h-8 bg-gradient-to-b from-[#f0f0f0] to-[#c0c0c0] rounded-sm shadow-md border-b-2 border-black/30 flex items-center justify-center cursor-grab">
+                <div 
+                  className="absolute w-12 h-8 bg-gradient-to-b from-[#f0f0f0] to-[#c0c0c0] rounded-sm shadow-md border-b-2 border-black/30 flex items-center justify-center pointer-events-none"
+                  style={{ bottom: `${mainVolume}%`, transform: 'translateY(50%)' }}
+                >
                   <div className="w-8 h-1 bg-black/60 rounded-full"></div>
                 </div>
               </div>
