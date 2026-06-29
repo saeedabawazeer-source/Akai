@@ -173,8 +173,22 @@ export default function App() {
   // ─── Keyboard mapping ─────────────────────────────────
   useEffect(() => {
     const keyMap = { '1':13,'2':14,'3':15,'4':16,'q':9,'w':10,'e':11,'r':12,'a':5,'s':6,'d':7,'f':8,'z':1,'x':2,'c':3,'v':4 };
-    const down = (e) => { const p = keyMap[e.key.toLowerCase()]; if (p && !e.repeat) triggerPad(p); };
-    const up = (e) => { const p = keyMap[e.key.toLowerCase()]; if (p) releasePad(p); };
+    const down = (e) => {
+      if (e.key === 'Shift') {
+        setShiftHeld(true);
+        return;
+      }
+      const p = keyMap[e.key.toLowerCase()];
+      if (p && !e.repeat) triggerPad(p);
+    };
+    const up = (e) => {
+      if (e.key === 'Shift') {
+        setShiftHeld(false);
+        return;
+      }
+      const p = keyMap[e.key.toLowerCase()];
+      if (p) releasePad(p);
+    };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
@@ -259,12 +273,27 @@ export default function App() {
   }, [playMode, activePad, screenMode]);
 
   // ─── Button handlers ──────────────────────────────────
-  const handleSampleButton = () => setScreenMode(shiftHeld ? 'PROGRAM_EDIT' : 'SAMPLE_EDIT');
-  const handleSeqButton = () => setScreenMode(shiftHeld ? 'SONG' : 'SEQUENCE');
-  const handlePadFXButton = () => setScreenMode('PAD_FX');
-  const handleKnobFXButton = () => setScreenMode('KNOB_FX');
-  const handleShiftDown = () => setShiftHeld(true);
-  const handleShiftUp = () => setShiftHeld(false);
+  const consumeShift = () => {
+    if (shiftHeld) setShiftHeld(false);
+  };
+
+  const handleSampleButton = () => {
+    setScreenMode(shiftHeld ? 'PROGRAM_EDIT' : 'SAMPLE_EDIT');
+    consumeShift();
+  };
+  const handleSeqButton = () => {
+    setScreenMode(shiftHeld ? 'SONG' : 'SEQUENCE');
+    consumeShift();
+  };
+  const handlePadFXButton = () => {
+    setScreenMode('PAD_FX');
+    consumeShift();
+  };
+  const handleKnobFXButton = () => {
+    setScreenMode('KNOB_FX');
+    consumeShift();
+  };
+  const handleShiftToggle = () => setShiftHeld(prev => !prev);
 
   const handlePadBank = () => {
     const banks: PadBank[] = ['A','B','C','D'];
@@ -274,6 +303,7 @@ export default function App() {
   const handleErase = () => {
     if (shiftHeld) {
       // Copy mode - placeholder
+      consumeShift();
     } else {
       // Erase last event - clear active pad's track
       if (activePad) {
@@ -285,6 +315,7 @@ export default function App() {
   const handleNoteRepeat = () => {
     if (shiftHeld) {
       // Triplet mode toggle - placeholder
+      consumeShift();
     } else {
       setNoteRepeat(!noteRepeat);
     }
@@ -293,6 +324,7 @@ export default function App() {
   const handleChop = () => {
     if (shiftHeld) {
       setScreenMode('MIXER');
+      consumeShift();
     } else {
       if (audioBuffer) {
         const newSlices = autoChop(audioBuffer, 16);
@@ -309,23 +341,30 @@ export default function App() {
   const handleLoop = () => {
     if (shiftHeld) {
       // Reverse - placeholder
+      consumeShift();
     } else {
       setPlayMode(prev => prev === 'LOOP' ? 'ONE SHOT' : 'LOOP');
     }
   };
 
   const handle16Levels = () => {
-    if (sixteenLevels) {
-      setSixteenLevels(false);
+    if (shiftHeld) {
+      // Pad Perform mode - placeholder
+      consumeShift();
     } else {
-      setSixteenLevels(true);
-      setSixteenLevelsPad(activePad || 1);
+      if (sixteenLevels) {
+        setSixteenLevels(false);
+      } else {
+        setSixteenLevels(true);
+        setSixteenLevelsPad(activePad || 1);
+      }
     }
   };
 
   const handleSampleSelect = () => {
     if (shiftHeld) {
       // Save sample - placeholder
+      consumeShift();
     } else {
       setScreenMode('BROWSER');
     }
@@ -334,6 +373,7 @@ export default function App() {
   const handleTapTempo = () => {
     if (shiftHeld) {
       setMetronome(!metronome);
+      consumeShift();
     }
     // Normal tap tempo - could implement with timestamps
   };
@@ -580,7 +620,7 @@ export default function App() {
 
             <div className="flex justify-between px-1">
               <MPCButton color="black" width="w-14" height="h-7"
-                onClick={handleShiftDown} active={shiftHeld}>SHIFT</MPCButton>
+                onClick={handleShiftToggle} active={shiftHeld}>SHIFT</MPCButton>
               <MPCButton color="gray" width="w-14" height="h-7" onClick={handlePadBank}>PAD<br/>BANK</MPCButton>
             </div>
 
