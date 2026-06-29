@@ -7,21 +7,19 @@ import {
 } from './audioEngine';
 import {
   ScreenMode, PlayMode, PadBank, PadSettings, SequenceTrack,
-  DEFAULT_PAD_SETTINGS, PRESET_KITS, DEFAULT_PAD_FX, KnobMapping
+  DEFAULT_PAD_SETTINGS, PRESET_KITS, DEFAULT_PAD_FX, KnobMapping,
+  SampleColumn1, SampleColumn2, SampleColumn3, ActiveSampleColumn
 } from './types';
 
 // Lazy screen imports
-import MainScreen from './screens/MainScreen';
 import SampleScreen from './screens/SampleScreen';
 import SampleRecordScreen from './screens/SampleRecordScreen';
 import SequenceScreen from './screens/SequenceScreen';
 import SongScreen from './screens/SongScreen';
 import PadFXScreen from './screens/PadFXScreen';
 import KnobFXScreen from './screens/KnobFXScreen';
-import ProgramEditScreen from './screens/ProgramEditScreen';
 import BrowserScreen from './screens/BrowserScreen';
 import MenuScreen from './screens/MenuScreen';
-import MixerScreen from './screens/MixerScreen';
 
 // ─── Reusable UI Components ─────────────────────────────
 
@@ -178,6 +176,24 @@ export default function App() {
   // ── 16 Levels state ──
   const [sixteenLevels, setSixteenLevels] = useState(false);
   const [sixteenLevelsPad, setSixteenLevelsPad] = useState(1);
+  const [sixteenLevelsType, setSixteenLevelsType] = useState('VELOCITY');
+
+  // ── Sample column navigation ──
+  const [sampleCol1, setSampleCol1] = useState<SampleColumn1>('Trim');
+  const [sampleCol2, setSampleCol2] = useState<SampleColumn2>('Tune');
+  const [sampleCol3, setSampleCol3] = useState<SampleColumn3>('Filter');
+  const [activeSampleCol, setActiveSampleCol] = useState<ActiveSampleColumn>(1);
+
+  // ── Chop / Loop / Reverse state ──
+  const [chopMode, setChopMode] = useState(false);
+  const [chopType, setChopType] = useState('Equal');
+  const [loopStart, setLoopStart] = useState(0);
+  const [isReversed, setIsReversed] = useState(false);
+
+  // ── Sample Record settings ──
+  const [recSource, setRecSource] = useState('Input 1/2');
+  const [recLength, setRecLength] = useState(4); // bars
+  const [recThreshold, setRecThreshold] = useState(0); // dB
 
   // ─── Keyboard mapping ─────────────────────────────────
   useEffect(() => {
@@ -335,7 +351,7 @@ export default function App() {
   };
 
   const handleSampleButton = () => {
-    setScreenMode(shiftHeld ? 'PROGRAM_EDIT' : 'SAMPLE_EDIT');
+    setScreenMode(shiftHeld ? 'MENU_INPUT_CONFIG' : 'SAMPLE');
     consumeShift();
   };
   const handleSeqButton = () => {
@@ -400,7 +416,7 @@ export default function App() {
 
   const handleLoop = () => {
     if (shiftHeld) {
-      // Reverse - placeholder
+      setIsReversed(prev => !prev);
       consumeShift();
     } else {
       setPlayMode(prev => prev === 'LOOP' ? 'ONE SHOT' : 'LOOP');
@@ -518,6 +534,12 @@ export default function App() {
         if (sampleCol3 === 'Filter') updatePadSetting('filterFreq', 20 + Math.pow(v / 100, 2) * 19980);
         if (sampleCol3 === 'Filt Env') { /* filter env attack */ }
       }
+    } else if (screenMode === 'SEQUENCE') {
+      setSeqLength(Math.max(1, Math.min(8, Math.round((v / 100) * 7) + 1)));
+    } else if (screenMode === 'SAMPLE_RECORD') {
+      const sources = ['Input 1/2', 'Input 3/4', 'Main Out', 'Resample'];
+      const idx = Math.min(sources.length - 1, Math.floor((v / 100) * sources.length));
+      setRecSource(sources[idx]);
     }
   };
   const handleK2Change = (v) => {
@@ -534,13 +556,17 @@ export default function App() {
         if (sampleCol3 === 'Filter') updatePadSetting('filterRes', (v / 100) * 20);
         if (sampleCol3 === 'Filt Env') { /* filter env decay */ }
       }
+    } else if (screenMode === 'SEQUENCE') {
+      /* K2 = Quantize (placeholder) */
+    } else if (screenMode === 'SAMPLE_RECORD') {
+      setRecLength(Math.max(1, Math.min(64, Math.round((v / 100) * 63) + 1)));
     }
   };
   const handleK3Change = (v) => {
     if (screenMode === 'SAMPLE') {
       if (chopMode) { /* K3 = Chop Type */ }
       else if (activeSampleCol === 1) {
-        if (sampleCol1 === 'Trim') { /* loop point */ }
+        if (sampleCol1 === 'Trim') setLoopStart(v / 100);
         if (sampleCol1 === 'Mix') updatePadSetting('pan', Math.floor((v / 100) * 100) - 50);
         if (sampleCol1 === 'Amp Env') { /* vel sens */ }
       } else if (activeSampleCol === 2) {
@@ -550,6 +576,10 @@ export default function App() {
         if (sampleCol3 === 'Filter') { /* filter type */ }
         if (sampleCol3 === 'Filt Env') { /* depth */ }
       }
+    } else if (screenMode === 'SEQUENCE') {
+      /* K3 = Swing (placeholder) */
+    } else if (screenMode === 'SAMPLE_RECORD') {
+      setRecThreshold(Math.round((v / 100) * -60));
     }
   };
 
@@ -578,18 +608,42 @@ export default function App() {
 
   // ─── Screen renderer ──────────────────────────────────
   const renderScreen = () => {
-    const common = { activePad: activePad || 1 };
+    const padIdx = (activePad || 1) - 1;
+    const currentPadSettings = allPadSettings[padIdx] || DEFAULT_PAD_SETTINGS;
+
+    const sampleScreenProps = {
+      audioBuffer,
+      activePad: activePad || 1,
+      padBank,
+      padAssignments,
+      sampleCol1,
+      sampleCol2,
+      sampleCol3,
+      activeSampleCol,
+      padSettings: currentPadSettings,
+      trimStart,
+      trimEnd,
+      loopStart,
+      chopMode,
+      chopType,
+      chopMarkers,
+      selectedChopMarker,
+      playMode,
+      sixteenLevels,
+      sixteenLevelsType,
+      isReversed,
+      onWaveformClick: (pos: number) => {
+        if (chopMode) {
+          setSelectedChopMarker(chopMarkers.reduce((closest, m, i) => Math.abs(m - pos) < Math.abs(chopMarkers[closest] - pos) ? i : closest, 0));
+        } else {
+          setTrimStart(pos);
+        }
+      },
+    };
+
     switch (screenMode) {
-      case 'MAIN':
-        return <MainScreen bpm={bpm} currentSeq={currentSeq} isPlaying={isPlaying}
-          isSeqRecording={isSeqRecording} padBank={padBank}
-          programName={PRESET_KITS[currentKit]?.name || 'Default'} padAssignments={padAssignments} />;
-      case 'SAMPLE_EDIT':
-        return <SampleEditScreen audioBuffer={audioBuffer} slices={slices} activePad={activePad}
-          activeSubTab={sampleEditTab} setActiveSubTab={setSampleEditTab}
-          trimStart={trimStart} trimEnd={trimEnd}
-          chopMarkers={chopMarkers} selectedChopMarker={selectedChopMarker}
-          padAssignments={padAssignments} />;
+      case 'SAMPLE':
+        return <SampleScreen {...sampleScreenProps} />;
       case 'SAMPLE_RECORD':
         return <SampleRecordScreen isRecording={isRecording} recordingTime={recordingTime}
           inputLevel={isRecording ? 60 + Math.random() * 30 : 0} />;
@@ -601,15 +655,9 @@ export default function App() {
         return <SongScreen songSequences={songSequences} currentSongStep={currentSongStep}
           isPlaying={isPlaying} totalSequences={totalSequences} />;
       case 'PAD_FX':
-        return <PadFXScreen effects={effects} activeFXPad={activeFXPad}
-          onToggleEffect={(idx) => setEffects(prev => prev.map((fx, i) => i === idx ? { ...fx, active: !fx.active } : fx))} />;
+        return <PadFXScreen knobMappings={knobMappings} activeEffectIndex={activeFXPad} />;
       case 'KNOB_FX':
-        return <KnobFXScreen knobMappings={knobMappings} />;
-      case 'PROGRAM_EDIT':
-        return <ProgramEditScreen activePad={activePad || 1}
-          padSettings={allPadSettings[(activePad || 1) - 1]}
-          activeSubTab={programEditTab} setActiveSubTab={setProgramEditTab}
-          onUpdatePadSetting={updatePadSetting} />;
+        return <KnobFXScreen knobMappings={knobMappings} activeEffect={knobMappings[0]?.param || 'LP Filter'} />;
       case 'BROWSER':
         return <BrowserScreen
           presetKits={PRESET_KITS}
@@ -617,16 +665,47 @@ export default function App() {
           isPreviewOn={browserPreviewOn}
           drive={browserDrive}
         />;
-      case 'MIXER':
-        return <MixerScreen padSettings={allPadSettings} activePad={activePad || 1}
-          onUpdateVolume={(id, v) => setAllPadSettings(prev => prev.map((s, i) => i === id-1 ? { ...s, volume: v } : s))}
-          onUpdatePan={(id, v) => setAllPadSettings(prev => prev.map((s, i) => i === id-1 ? { ...s, pan: v } : s))}
-          onToggleMute={(id) => setAllPadSettings(prev => prev.map((s, i) => i === id-1 ? { ...s, muted: !s.muted } : s))}
-          onToggleSolo={(id) => setAllPadSettings(prev => prev.map((s, i) => i === id-1 ? { ...s, soloed: !s.soloed } : s))} />;
+      case 'MENU_INPUT_CONFIG':
+        return <MenuScreen title="Input Config" selectedIndex={menuSelectedIndex} items={[
+          { label: 'Input Source', value: 'Input 1/2' },
+          { label: 'Monitor', value: 'On' },
+          { label: 'Input Gain', value: '0 dB' },
+          { label: 'Phantom Power', value: 'Off' },
+        ]} />;
+      case 'MENU_FADER':
+        return <MenuScreen title="Fader" selectedIndex={menuSelectedIndex} items={[
+          { label: 'Fader Mode', value: 'Volume' },
+          { label: 'Channel', value: 'All' },
+        ]} />;
+      case 'MENU_TIME_CORRECT':
+        return <MenuScreen title="Time Correct" selectedIndex={menuSelectedIndex} items={[
+          { label: 'Quantize', value: '1/16' },
+          { label: 'Swing', value: '50%' },
+          { label: 'Strength', value: '100%' },
+        ]} />;
+      case 'MENU_MIDI_CONFIG':
+        return <MenuScreen title="MIDI Config" selectedIndex={menuSelectedIndex} items={[
+          { label: 'MIDI Channel', value: '1' },
+          { label: 'Send MIDI', value: 'On' },
+          { label: 'Receive MIDI', value: 'On' },
+        ]} />;
+      case 'MENU_PROJECT':
+        return <MenuScreen title="Project" selectedIndex={menuSelectedIndex} items={[
+          { label: 'Project Name', value: 'Untitled' },
+          { label: 'Save Project' },
+          { label: 'Load Project' },
+          { label: 'New Project' },
+        ]} />;
+      case 'MENU_COMPRESSOR':
+        return <MenuScreen title="Compressor" selectedIndex={menuSelectedIndex} items={[
+          { label: 'Threshold', value: '-12 dB' },
+          { label: 'Ratio', value: '4:1' },
+          { label: 'Attack', value: '10 ms' },
+          { label: 'Release', value: '100 ms' },
+          { label: 'Makeup', value: '0 dB' },
+        ]} />;
       default:
-        return <MainScreen bpm={bpm} currentSeq={currentSeq} isPlaying={isPlaying}
-          isSeqRecording={isSeqRecording} padBank={padBank}
-          programName={PRESET_KITS[currentKit]?.name || 'Default'} padAssignments={padAssignments} />;
+        return <SampleScreen {...sampleScreenProps} />;
     }
   };
 
@@ -670,7 +749,7 @@ export default function App() {
             <div className="flex flex-row items-stretch w-full space-x-4">
               {/* LCD Screen */}
               <div className="flex-grow bg-[#151515] border-4 border-black rounded-sm h-[140px] p-1 flex flex-col relative overflow-hidden cursor-pointer"
-                onClick={() => { if (screenMode !== 'MAIN') setScreenMode('SAMPLE'); }}>
+                onClick={() => { setScreenMode('SAMPLE'); }}>
                 {renderScreen()}
               </div>
 

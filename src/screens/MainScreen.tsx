@@ -42,7 +42,7 @@ const MainScreen: React.FC<MainScreenProps> = ({
           {programName}
         </span>
         <span className="text-[8px] text-gray-500 uppercase tracking-wider">
-          MPC2000XL
+          MPC Sample
         </span>
       </div>
 
