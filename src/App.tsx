@@ -91,7 +91,7 @@ const MPCButton = ({ children, color = 'gray', label, subLabel, width = 'w-16', 
 
 export default function App() {
   // ── Screen navigation ──
-  const [screenMode, setScreenMode] = useState<ScreenMode>('MAIN');
+  const [screenMode, setScreenMode] = useState<ScreenMode>('SAMPLE');
   const [shiftHeld, setShiftHeld] = useState(false);
 
   // ── Audio state ──
@@ -488,7 +488,7 @@ export default function App() {
       setAudioBuffer(buffer);
       setSlices([]);
       setIsRecording(false);
-      setScreenMode('SAMPLE_EDIT');
+      setScreenMode('SAMPLE');
     }
   };
 
@@ -560,7 +560,7 @@ export default function App() {
     setCurrentKit(kitIdx);
     setPadAssignments(kit.pads.map(p => p.name));
     setPadSynthTypes(kit.pads.map(p => p.synthType));
-    setScreenMode('MAIN');
+    setScreenMode('SAMPLE');
   };
 
   // ─── Seq step toggle ──────────────────────────────────
@@ -670,7 +670,7 @@ export default function App() {
             <div className="flex flex-row items-stretch w-full space-x-4">
               {/* LCD Screen */}
               <div className="flex-grow bg-[#151515] border-4 border-black rounded-sm h-[140px] p-1 flex flex-col relative overflow-hidden cursor-pointer"
-                onClick={() => { if (screenMode !== 'MAIN') setScreenMode('MAIN'); }}>
+                onClick={() => { if (screenMode !== 'MAIN') setScreenMode('SAMPLE'); }}>
                 {renderScreen()}
               </div>
 
@@ -823,24 +823,41 @@ export default function App() {
               <div
                 onPointerDown={(e) => {
                   e.preventDefault();
-                  let lastY = e.clientY;
+                  const target = e.currentTarget;
+                  const rect = target.getBoundingClientRect();
+                  const cx = rect.left + rect.width / 2;
+                  const cy = rect.top + rect.height / 2;
+                  let lastAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+                  
+                  let isClick = true;
+                  
                   const move = (ev) => {
-                    const dy = lastY - ev.clientY;
-                    if (Math.abs(dy) > 2) {
-                      handleDataWheel(Math.sign(dy));
-                      lastY = ev.clientY;
+                    const currentAngle = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+                    let delta = currentAngle - lastAngle;
+                    
+                    if (delta > Math.PI) delta -= 2 * Math.PI;
+                    if (delta < -Math.PI) delta += 2 * Math.PI;
+                    
+                    if (Math.abs(delta) > 0.15) {
+                      isClick = false;
+                      handleDataWheel(Math.sign(delta));
+                      lastAngle = currentAngle;
                     }
                   };
-                  const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+                  const up = () => { 
+                    document.removeEventListener('pointermove', move); 
+                    document.removeEventListener('pointerup', up);
+                    if (isClick) {
+                      if (screenMode === 'BROWSER') {
+                        loadKit(selectedBrowserKit);
+                      }
+                    }
+                  };
                   document.addEventListener('pointermove', move);
                   document.addEventListener('pointerup', up);
                 }}
-                className="w-[75px] h-[75px] rounded-full shadow-[0_8px_15px_rgba(0,0,0,0.3)] bg-gradient-to-b from-[#e8e9eb] to-[#b0b1b4] border border-[#a0a0a0] flex items-center justify-center cursor-ns-resize touch-none active:scale-[0.98] transition-transform"
-                onClick={() => {
-                  if (screenMode === 'BROWSER') {
-                    loadKit(selectedBrowserKit);
-                  }
-                }}>
+                className="w-[75px] h-[75px] rounded-full shadow-[0_8px_15px_rgba(0,0,0,0.3)] bg-gradient-to-b from-[#e8e9eb] to-[#b0b1b4] border border-[#a0a0a0] flex items-center justify-center cursor-pointer touch-none active:scale-[0.98] transition-transform"
+              >
                 <div className="w-12 h-12 rounded-full shadow-[inset_0_4px_6px_rgba(0,0,0,0.2)] bg-[#d4d5d8] border border-white/50 relative">
                   <div className="absolute top-2 left-2 w-3 h-3 rounded-full shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] bg-[#c0c1c4]"></div>
                 </div>
