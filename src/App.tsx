@@ -282,24 +282,31 @@ export default function App() {
   }, [screenMode]);
 
   // ─── Pad trigger / release ─────────────────────────────
-  const triggerPad = useCallback((id) => {
-    setActivePad(id);
-    if (activeNodesRef.current[id]) stopAudioNodes(activeNodesRef.current[id]);
+  const triggerPad = useCallback((id: number, time?: number) => {
+    const ctx = getAudioContext();
+    const delay = time ? Math.max(0, (time - ctx.currentTime) * 1000) : 0;
+    
+    setTimeout(() => {
+      setActivePad(id);
+    }, delay);
+
+    if (activeNodesRef.current[id]) {
+      if (!time) stopAudioNodes(activeNodesRef.current[id]);
+    }
 
     if (noteRepeat) {
       if (noteRepeatRef.current) clearInterval(noteRepeatRef.current);
       const intervalMs = (60000 / bpm) / 4; // 16th notes
       noteRepeatRef.current = setInterval(() => {
-        // We need a helper to actually play the sound without resetting activePad state loops
         playPadSound(id);
       }, intervalMs);
     }
 
-    playPadSound(id);
+    playPadSound(id, time);
   }, [slices, audioBuffer, mainVolume, playMode, padSynthTypes, allPadSettings, screenMode, effects, muteMode, isSeqRecording, currentStep, sixteenLevels, sixteenLevelsPad, noteRepeat, bpm]);
 
-  const playPadSound = (id) => {
-    if (activeNodesRef.current[id]) stopAudioNodes(activeNodesRef.current[id]);
+  const playPadSound = (id: number, time?: number) => {
+    if (!time && activeNodesRef.current[id]) stopAudioNodes(activeNodesRef.current[id]);
 
     // In PAD FX mode, toggling effects
     if (screenMode === 'PAD_FX') {
@@ -331,7 +338,7 @@ export default function App() {
       const synthType = padSynthTypes[sixteenLevelsPad - 1];
       if (synthType && synthFunctions[synthType]) {
         const ctx = getAudioContext();
-        const nodes = synthFunctions[synthType](ctx);
+        const nodes = synthFunctions[synthType](ctx, time);
         if (nodes?.gainNode) nodes.gainNode.gain.value *= vol;
         activeNodesRef.current[id] = nodes;
       }
@@ -348,13 +355,14 @@ export default function App() {
         audioBuffer, slice.start, slice.end,
         (padSet.volume / 100) * (mainVolume / 66),
         padSet.tune, padSet.filterFreq,
-        playMode === 'LOOP'
+        playMode === 'LOOP',
+        time
       );
     } else {
       const synthType = padSynthTypes[id - 1];
       if (synthType && synthFunctions[synthType]) {
         const ctx = getAudioContext();
-        nodes = synthFunctions[synthType](ctx);
+        nodes = synthFunctions[synthType](ctx, time);
         if (nodes?.gainNode) nodes.gainNode.gain.value *= (padSet.volume / 100) * (mainVolume / 66);
       }
     }

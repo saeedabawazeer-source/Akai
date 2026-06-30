@@ -138,24 +138,24 @@ const SampleScreen: React.FC<SampleScreenProps> = ({
   const padLabel = `${padBank}${String(activePad || 1).padStart(2, '0')}`;
 
   const renderTopBar = () => (
-    <div className="flex justify-between px-2 py-0.5 border-b border-[#2a2a2a] mb-1">
-      <div className={`text-[8px] px-2 py-[1px] ${activeSampleCol === 1 ? 'bg-white text-black font-bold' : 'text-gray-400'}`}>{sampleCol1}</div>
-      <div className={`text-[8px] px-2 py-[1px] ${activeSampleCol === 2 ? 'bg-white text-black font-bold' : 'text-gray-400'}`}>{sampleCol2}</div>
-      <div className={`text-[8px] px-2 py-[1px] ${activeSampleCol === 3 ? 'bg-white text-black font-bold' : 'text-gray-400'}`}>{sampleCol3}</div>
+    <div className="flex justify-between px-1 pt-1 pb-0.5 border-b border-[#2a2a2a] mb-1 bg-[#111]">
+      <div className={`text-[9px] px-1 py-[1px] ${activeSampleCol === 1 ? 'bg-[#ffef00] text-black font-bold border border-black' : 'text-white/80'}`}>{sampleCol1}</div>
+      <div className={`text-[9px] px-1 py-[1px] ${activeSampleCol === 2 ? 'bg-[#ffef00] text-black font-bold border border-black' : 'text-white/80'}`}>{sampleCol2}</div>
+      <div className={`text-[9px] px-1 py-[1px] ${activeSampleCol === 3 ? 'bg-[#ffef00] text-black font-bold border border-black' : 'text-white/80'}`}>{sampleCol3}</div>
     </div>
   );
 
   const renderInfoBar = () => (
-    <div className="flex items-center justify-between px-1 mb-1">
-      <div className="flex items-center gap-2">
-        <span className="text-[9px] text-[#ffef00] font-bold">{padLabel}</span>
-        <span className="text-[9px] text-[#ffef00] truncate max-w-[80px]">{padName}</span>
+    <div className="flex items-center justify-between px-1 mb-1 bg-[#151515]">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] text-white font-bold px-1 border border-[#333]">{padLabel}</span>
+        <span className="text-[10px] text-white font-bold truncate max-w-[80px]">{padName}</span>
       </div>
-      <div className="flex gap-1">
-        {playMode === 'NOTE ON' && <span className="text-[8px] border border-white px-0.5">🎵</span>}
-        {isReversed && <span className="text-[8px] border border-white px-0.5">←</span>}
-        {playMode === 'LOOP' && <span className="text-[8px] border border-white px-0.5">🔁</span>}
-        {sixteenLevels && <span className="text-[8px] border border-white px-0.5">16</span>}
+      <div className="flex gap-1 items-center">
+        {playMode === 'NOTE ON' && <span className="text-[8px] bg-white text-black px-1 font-bold">NOTE ON</span>}
+        {isReversed && <span className="text-[8px] bg-white text-black px-1 font-bold">REV</span>}
+        {playMode === 'LOOP' && <span className="text-[8px] bg-white text-black px-1 font-bold">LOOP</span>}
+        {sixteenLevels && <span className="text-[8px] bg-[#ffef00] text-black px-1 font-bold">16Lvl</span>}
       </div>
     </div>
   );
@@ -175,9 +175,9 @@ const SampleScreen: React.FC<SampleScreenProps> = ({
           p2 = 'End'; v2 = '';
           p3 = 'Loop'; v3 = '';
         } else if (sampleCol1 === 'Mix') {
-          p1 = 'Volume'; v1 = padSettings.volume.toFixed(0);
-          p2 = 'Pan'; v2 = padSettings.pan === 0 ? 'C' : padSettings.pan < 0 ? `${Math.abs(padSettings.pan)}L` : `${padSettings.pan}R`;
-          p3 = ''; v3 = '';
+          p1 = 'Volume'; v1 = `${padSettings.volume.toFixed(0)} dB`;
+          p2 = 'Kit Vol'; v2 = '0 dB';
+          p3 = 'Pan'; v3 = padSettings.pan === 0 ? 'C' : padSettings.pan < 0 ? `${Math.abs(padSettings.pan)}L` : `${padSettings.pan}R`;
         } else if (sampleCol1 === 'Amp Env') {
           p1 = 'Attack'; v1 = padSettings.attack.toFixed(2);
           p2 = playMode === 'NOTE ON' ? 'Release' : 'Decay'; v2 = playMode === 'NOTE ON' ? padSettings.release.toFixed(2) : padSettings.decay.toFixed(2);
@@ -207,18 +207,18 @@ const SampleScreen: React.FC<SampleScreenProps> = ({
     }
 
     return (
-      <div className="flex justify-between px-1 mt-1 pb-1">
-        <div className="flex flex-col flex-1 border-r border-[#222]">
-          <span className="text-[7px] text-white">{p1}</span>
-          <span className="text-[7px] text-[#ffef00]">{v1}</span>
+      <div className="flex justify-between px-1 mt-1 pb-1 bg-[#111] border-t border-[#333]">
+        <div className="flex flex-col flex-1 border-r border-[#333] pl-1 justify-center h-[34px]">
+          <span className="text-[9px] text-white/70 leading-none">{p1}</span>
+          <span className="text-[11px] text-white font-bold leading-none mt-1">{v1}</span>
         </div>
-        <div className="flex flex-col flex-1 pl-1 border-r border-[#222]">
-          <span className="text-[7px] text-white">{p2}</span>
-          <span className="text-[7px] text-[#ffef00]">{v2}</span>
+        <div className="flex flex-col flex-1 pl-2 border-r border-[#333] justify-center h-[34px]">
+          <span className="text-[9px] text-white/70 leading-none">{p2}</span>
+          <span className="text-[11px] text-white font-bold leading-none mt-1">{v2}</span>
         </div>
-        <div className="flex flex-col flex-1 pl-1">
-          <span className="text-[7px] text-white">{p3}</span>
-          <span className="text-[7px] text-[#ffef00]">{v3}</span>
+        <div className="flex flex-col flex-1 pl-2 justify-center h-[34px]">
+          <span className="text-[9px] text-white/70 leading-none">{p3}</span>
+          <span className="text-[11px] text-white font-bold leading-none mt-1">{v3}</span>
         </div>
       </div>
     );
