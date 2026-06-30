@@ -4,7 +4,7 @@ import { Mic } from 'lucide-react';
 import {
   getAudioContext, startRecording, stopRecording, autoChop, playSlice,
   stopAudioNodes, synthFunctions, startSequencer, stopSequencer, isSequencerRunning,
-  startMicMonitor, stopMicMonitor, getMicLevel
+  startMicMonitor, stopMicMonitor, getMicLevel, getMasterBus, updateMasterFX
 } from './audioEngine';
 import {
   ScreenMode, PlayMode, PadBank, PadSettings, SequenceTrack,
@@ -195,11 +195,100 @@ export default function App() {
   // ── FX state ──
   const [effects, setEffects] = useState(() => [...DEFAULT_PAD_FX]);
   const [activeFXPad, setActiveFXPad] = useState(null);
+  const [masterFXParams, setMasterFXParams] = useState({ p1: 0.5, p2: 0.5, p3: 0.5, type: 'LP Filter' });
   const [knobMappings, setKnobMappings] = useState<KnobMapping[]>([
-    { label: 'K1', param: 'Filter Freq', value: 50, min: 0, max: 100 },
-    { label: 'K2', param: 'Resonance', value: 0, min: 0, max: 100 },
-    { label: 'K3', param: 'Delay Mix', value: 0, min: 0, max: 100 },
+    { label: 'K1', param: '-', value: 50, min: 0, max: 100 },
+    { label: 'K2', param: '-', value: 50, min: 0, max: 100 },
+    { label: 'K3', param: '-', value: 50, min: 0, max: 100 },
   ]);
+
+  // ── Sync Knob Mappings ──
+  useEffect(() => {
+    const padSet = allPadSettings[(activePad || 1) - 1] || DEFAULT_PAD_SETTINGS;
+    
+    if (screenMode === 'SAMPLE') {
+      if (chopMode) {
+         const slice = slices.find(s => s.id === (activePad || 1));
+         setKnobMappings([
+           { label: 'K1', param: 'Start', value: slice ? slice.start * 100 : 0, min: 0, max: 100 },
+           { label: 'K2', param: 'End', value: slice ? slice.end * 100 : 100, min: 0, max: 100 },
+           { label: 'K3', param: 'Chop Type', value: 0, min: 0, max: 100 },
+         ]);
+      } else if (activeSampleCol === 1) {
+         if (sampleCol1 === 'Trim') {
+           setKnobMappings([
+             { label: 'K1', param: 'Start', value: trimStart * 100, min: 0, max: 100 },
+             { label: 'K2', param: 'End', value: trimEnd * 100, min: 0, max: 100 },
+             { label: 'K3', param: 'Loop', value: loopStart * 100, min: 0, max: 100 },
+           ]);
+         } else if (sampleCol1 === 'Mix') {
+           setKnobMappings([
+             { label: 'K1', param: 'Volume', value: padSet.volume, min: 0, max: 100 },
+             { label: 'K2', param: 'Kit Vol', value: 100, min: 0, max: 100 },
+             { label: 'K3', param: 'Pan', value: ((padSet.pan + 50) / 100) * 100, min: 0, max: 100 },
+           ]);
+         } else if (sampleCol1 === 'Amp Env') {
+           setKnobMappings([
+             { label: 'K1', param: 'Attack', value: (padSet.attack / 2) * 100, min: 0, max: 100 },
+             { label: 'K2', param: playMode === 'NOTE ON' ? 'Release' : 'Decay', value: playMode === 'NOTE ON' ? (padSet.release / 5) * 100 : (padSet.decay / 2) * 100, min: 0, max: 100 },
+             { label: 'K3', param: 'Vel Sens', value: 100, min: 0, max: 100 },
+           ]);
+         }
+      } else if (activeSampleCol === 2) {
+         if (sampleCol2 === 'Tune') {
+           setKnobMappings([
+             { label: 'K1', param: 'Semi Tune', value: ((padSet.tune + 24) / 48) * 100, min: 0, max: 100 },
+             { label: 'K2', param: 'Fine Tune', value: 50, min: 0, max: 100 },
+             { label: 'K3', param: 'Warp', value: 0, min: 0, max: 100 },
+           ]);
+         } else if (sampleCol2 === 'Play') {
+           setKnobMappings([
+             { label: 'K1', param: 'Polyphony', value: 100, min: 0, max: 100 },
+             { label: 'K2', param: 'Mute Grp', value: 0, min: 0, max: 100 },
+             { label: 'K3', param: 'Offset', value: 0, min: 0, max: 100 },
+           ]);
+         }
+      } else if (activeSampleCol === 3) {
+         if (sampleCol3 === 'Filter') {
+           const normFreq = Math.sqrt(Math.max(0, padSet.filterFreq - 20) / 19980) * 100;
+           setKnobMappings([
+             { label: 'K1', param: 'Cutoff', value: normFreq, min: 0, max: 100 },
+             { label: 'K2', param: 'Resonance', value: (padSet.filterRes / 20) * 100, min: 0, max: 100 },
+             { label: 'K3', param: 'Type', value: 50, min: 0, max: 100 },
+           ]);
+         } else if (sampleCol3 === 'Filt Env') {
+           setKnobMappings([
+             { label: 'K1', param: 'Attack', value: 0, min: 0, max: 100 },
+             { label: 'K2', param: 'Decay', value: 0, min: 0, max: 100 },
+             { label: 'K3', param: 'Depth', value: 0, min: 0, max: 100 },
+           ]);
+         }
+      }
+    } else if (screenMode === 'KNOB_FX' || screenMode === 'PAD_FX') {
+        setKnobMappings([
+          { label: 'K1', param: 'Param 1', value: masterFXParams.p1 * 100, min: 0, max: 100 },
+          { label: 'K2', param: 'Param 2', value: masterFXParams.p2 * 100, min: 0, max: 100 },
+          { label: 'K3', param: 'Param 3', value: masterFXParams.p3 * 100, min: 0, max: 100 },
+        ]);
+    } else if (screenMode === 'SEQUENCE') {
+        setKnobMappings([
+          { label: 'K1', param: 'Seq Length', value: ((seqLength - 1) / 7) * 100, min: 0, max: 100 },
+          { label: 'K2', param: 'Quantize', value: 50, min: 0, max: 100 },
+          { label: 'K3', param: 'Swing', value: 50, min: 0, max: 100 },
+        ]);
+    } else {
+        setKnobMappings([
+          { label: 'K1', param: '-', value: 0, min: 0, max: 100 },
+          { label: 'K2', param: '-', value: 0, min: 0, max: 100 },
+          { label: 'K3', param: '-', value: 0, min: 0, max: 100 },
+        ]);
+    }
+  }, [screenMode, activeSampleCol, sampleCol1, sampleCol2, sampleCol3, chopMode, activePad, allPadSettings, trimStart, trimEnd, loopStart, slices, playMode, seqLength, masterFXParams]);
+
+  // ── Sync Master FX ──
+  useEffect(() => {
+    updateMasterFX(masterFXParams);
+  }, [masterFXParams]);
 
   // ── Browser state ──
   const [selectedBrowserKit, setSelectedBrowserKit] = useState(0);
@@ -594,20 +683,22 @@ export default function App() {
   // ─── Knob handlers ────────────────────────────────────
   const handleK1Change = (v) => {
     if (screenMode === 'SAMPLE') {
-      if (chopMode) { /* K1 = Slice Start (placeholder) */ }
+      if (chopMode) {
+        setSlices(prev => prev.map(s => s.id === (activePad || 1) ? { ...s, start: Math.min(s.end - 0.01, v / 100) } : s));
+      }
       else if (activeSampleCol === 1) {
-        if (sampleCol1 === 'Trim') setTrimStart(v / 100);
-        if (sampleCol1 === 'Mix') updatePadSetting('volume', v);
+        if (sampleCol1 === 'Trim') setTrimStart(Math.min(trimEnd - 0.01, v / 100));
+        if (sampleCol1 === 'Mix') updatePadSetting('volume', Math.max(1, v)); // ensure never 0 to prevent click issues
         if (sampleCol1 === 'Amp Env') updatePadSetting('attack', (v / 100) * 2);
       } else if (activeSampleCol === 2) {
         if (sampleCol2 === 'Tune') updatePadSetting('tune', Math.floor((v / 100) * 48) - 24);
-        if (sampleCol2 === 'Play') { /* Polyphony - enum */ }
       } else if (activeSampleCol === 3) {
         if (sampleCol3 === 'Filter') updatePadSetting('filterFreq', 20 + Math.pow(v / 100, 2) * 19980);
-        if (sampleCol3 === 'Filt Env') { /* filter env attack */ }
       }
     } else if (screenMode === 'SEQUENCE') {
       setSeqLength(Math.max(1, Math.min(8, Math.round((v / 100) * 7) + 1)));
+    } else if (screenMode === 'KNOB_FX' || screenMode === 'PAD_FX') {
+      setMasterFXParams(prev => ({ ...prev, p1: v / 100 }));
     } else if (screenMode === 'SAMPLE_RECORD') {
       const sources = ['Input 1/2', 'Input 3/4', 'Main Out', 'Resample'];
       const idx = Math.min(sources.length - 1, Math.floor((v / 100) * sources.length));
@@ -616,20 +707,17 @@ export default function App() {
   };
   const handleK2Change = (v) => {
     if (screenMode === 'SAMPLE') {
-      if (chopMode) { /* K2 = Slice End */ }
+      if (chopMode) {
+        setSlices(prev => prev.map(s => s.id === (activePad || 1) ? { ...s, end: Math.max(s.start + 0.01, v / 100) } : s));
+      }
       else if (activeSampleCol === 1) {
-        if (sampleCol1 === 'Trim') setTrimEnd(v / 100);
-        if (sampleCol1 === 'Mix') { /* kit volume */ }
-        if (sampleCol1 === 'Amp Env') { playMode === 'NOTE ON' ? updatePadSetting('release', (v/100)*5) : updatePadSetting('decay', (v/100)*2); }
-      } else if (activeSampleCol === 2) {
-        if (sampleCol2 === 'Tune') { /* fine tune */ }
-        if (sampleCol2 === 'Play') { /* Mute group */ }
+        if (sampleCol1 === 'Trim') setTrimEnd(Math.max(trimStart + 0.01, v / 100));
+        if (sampleCol1 === 'Amp Env') { playMode === 'NOTE ON' ? updatePadSetting('release', Math.max(0.01, (v/100)*5)) : updatePadSetting('decay', Math.max(0.01, (v/100)*2)); }
       } else if (activeSampleCol === 3) {
         if (sampleCol3 === 'Filter') updatePadSetting('filterRes', (v / 100) * 20);
-        if (sampleCol3 === 'Filt Env') { /* filter env decay */ }
       }
-    } else if (screenMode === 'SEQUENCE') {
-      /* K2 = Quantize (placeholder) */
+    } else if (screenMode === 'KNOB_FX' || screenMode === 'PAD_FX') {
+      setMasterFXParams(prev => ({ ...prev, p2: v / 100 }));
     } else if (screenMode === 'SAMPLE_RECORD') {
       setRecLength(Math.max(1, Math.min(64, Math.round((v / 100) * 63) + 1)));
     }
@@ -640,14 +728,9 @@ export default function App() {
       else if (activeSampleCol === 1) {
         if (sampleCol1 === 'Trim') setLoopStart(v / 100);
         if (sampleCol1 === 'Mix') updatePadSetting('pan', Math.floor((v / 100) * 100) - 50);
-        if (sampleCol1 === 'Amp Env') { /* vel sens */ }
-      } else if (activeSampleCol === 2) {
-        if (sampleCol2 === 'Tune') { /* warp */ }
-        if (sampleCol2 === 'Play') { /* offset */ }
-      } else if (activeSampleCol === 3) {
-        if (sampleCol3 === 'Filter') { /* filter type */ }
-        if (sampleCol3 === 'Filt Env') { /* depth */ }
       }
+    } else if (screenMode === 'KNOB_FX' || screenMode === 'PAD_FX') {
+      setMasterFXParams(prev => ({ ...prev, p3: v / 100 }));
     } else if (screenMode === 'SEQUENCE') {
       /* K3 = Swing (placeholder) */
     } else if (screenMode === 'SAMPLE_RECORD') {

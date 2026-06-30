@@ -43,6 +43,76 @@ export const stopMicMonitor = (): void => {
   }
 };
 
+// ─── Master FX ───────────────────────────────────────────
+let masterBus: GainNode | null = null;
+let fxFilter: BiquadFilterNode | null = null;
+let fxDelay: DelayNode | null = null;
+let fxDelayFeedback: GainNode | null = null;
+let fxDistortion: WaveShaperNode | null = null;
+
+const makeDistortionCurve = (amount: number) => {
+  const k = typeof amount === 'number' ? amount : 50,
+    n_samples = 44100,
+    curve = new Float32Array(n_samples),
+    deg = Math.PI / 180;
+  for (let i = 0; i < n_samples; ++i) {
+    const x = (i * 2) / n_samples - 1;
+    curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+  }
+  return curve;
+};
+
+export const getMasterBus = (ctx: AudioContext) => {
+  if (masterBus) return masterBus;
+  masterBus = ctx.createGain();
+  
+  fxDistortion = ctx.createWaveShaper();
+  fxFilter = ctx.createBiquadFilter();
+  fxDelay = ctx.createDelay(2.0);
+  fxDelayFeedback = ctx.createGain();
+
+  masterBus.connect(fxDistortion);
+  fxDistortion.connect(fxFilter);
+  fxFilter.connect(ctx.destination);
+  fxFilter.connect(fxDelay);
+  fxDelay.connect(fxDelayFeedback);
+  fxDelayFeedback.connect(fxDelay);
+  fxDelay.connect(ctx.destination);
+
+  fxFilter.type = 'lowpass';
+  fxFilter.frequency.value = 20000;
+  fxDelay.delayTime.value = 0;
+  fxDelayFeedback.gain.value = 0;
+  return masterBus;
+};
+
+export const updateMasterFX = (params: { p1: number; p2: number; p3: number; type?: string }) => {
+  if (!fxFilter || !fxDelay || !fxDistortion) return;
+  const ctx = getAudioContext();
+  const t = ctx.currentTime;
+  
+  const type = params.type || 'LP Filter';
+  
+  if (type === 'LP Filter') {
+    fxFilter.type = 'lowpass';
+    fxFilter.frequency.setTargetAtTime(20 + params.p1 * 19980, t, 0.05);
+    fxFilter.Q.setTargetAtTime(params.p2 * 20, t, 0.05);
+    fxDelayFeedback.gain.setTargetAtTime(0, t, 0.05);
+    fxDistortion.curve = null;
+  } else if (type === 'Delay') {
+    fxFilter.type = 'lowpass';
+    fxFilter.frequency.setTargetAtTime(20000, t, 0.05);
+    fxDelay.delayTime.setTargetAtTime(params.p1 * 1.5, t, 0.05); // up to 1.5s
+    fxDelayFeedback.gain.setTargetAtTime(params.p2 * 0.9, t, 0.05); // up to 90% feedback
+    fxDistortion.curve = null;
+  } else if (type === 'Distortion') {
+    fxFilter.type = 'lowpass';
+    fxFilter.frequency.setTargetAtTime(20000, t, 0.05);
+    fxDelayFeedback.gain.setTargetAtTime(0, t, 0.05);
+    fxDistortion.curve = makeDistortionCurve(params.p1 * 400);
+  }
+};
+
 export const getMicLevel = (): number => {
   if (!analyserNode) return 0;
   const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
@@ -134,7 +204,7 @@ export const playSlice = (
 
   source.connect(filter);
   filter.connect(gainNode);
-  gainNode.connect(ctx.destination);
+  gainNode.connect(getMasterBus(ctx));
   return { source, gainNode, filter };
 };
 
@@ -158,7 +228,7 @@ export const stopAudioNodes = (nodes: any) => {
 const synthOut = (ctx: AudioContext, time?: number) => {
       const t = time !== undefined ? time : ctx.currentTime;
   const gain = ctx.createGain();
-  gain.connect(ctx.destination);
+  gain.connect(getMasterBus(ctx));
   return gain;
 };
 
