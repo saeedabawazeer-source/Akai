@@ -202,6 +202,40 @@ export default function App() {
     { label: 'K3', param: '-', value: 50, min: 0, max: 100 },
   ]);
 
+
+  // ── Browser state ──
+  const [selectedBrowserKit, setSelectedBrowserKit] = useState(0);
+  const [browserPreviewOn, setBrowserPreviewOn] = useState(true);
+  const [browserDrive, setBrowserDrive] = useState<'Internal' | 'External'>('Internal');
+  const [menuSelectedIndex, setMenuSelectedIndex] = useState(0);
+
+  // ── Note Repeat ──
+  const [noteRepeat, setNoteRepeat] = useState(false);
+  const noteRepeatRef = useRef(null);
+
+  // ── Metronome ──
+  const [metronome, setMetronome] = useState(false);
+
+  // ── Mute state ──
+  const [muteMode, setMuteMode] = useState(false);
+
+  // ── 16 Levels state ──
+  const [sixteenLevels, setSixteenLevels] = useState(false);
+  const [sixteenLevelsPad, setSixteenLevelsPad] = useState(1);
+  const [sixteenLevelsType, setSixteenLevelsType] = useState('VELOCITY');
+
+  // ── Sample column navigation ──
+  const [sampleCol1, setSampleCol1] = useState<SampleColumn1>('Trim');
+  const [sampleCol2, setSampleCol2] = useState<SampleColumn2>('Tune');
+  const [sampleCol3, setSampleCol3] = useState<SampleColumn3>('Filter');
+  const [activeSampleCol, setActiveSampleCol] = useState<ActiveSampleColumn>(1);
+
+  // ── Chop / Loop / Reverse state ──
+  const [chopMode, setChopMode] = useState(false);
+  const [chopType, setChopType] = useState('Equal');
+  const [loopStart, setLoopStart] = useState(0);
+  const [isReversed, setIsReversed] = useState(false);
+
   // ── Sync Knob Mappings ──
   useEffect(() => {
     const padSet = allPadSettings[(activePad || 1) - 1] || DEFAULT_PAD_SETTINGS;
@@ -290,38 +324,6 @@ export default function App() {
     updateMasterFX(masterFXParams);
   }, [masterFXParams]);
 
-  // ── Browser state ──
-  const [selectedBrowserKit, setSelectedBrowserKit] = useState(0);
-  const [browserPreviewOn, setBrowserPreviewOn] = useState(true);
-  const [browserDrive, setBrowserDrive] = useState<'Internal' | 'External'>('Internal');
-  const [menuSelectedIndex, setMenuSelectedIndex] = useState(0);
-
-  // ── Note Repeat ──
-  const [noteRepeat, setNoteRepeat] = useState(false);
-  const noteRepeatRef = useRef(null);
-
-  // ── Metronome ──
-  const [metronome, setMetronome] = useState(false);
-
-  // ── Mute state ──
-  const [muteMode, setMuteMode] = useState(false);
-
-  // ── 16 Levels state ──
-  const [sixteenLevels, setSixteenLevels] = useState(false);
-  const [sixteenLevelsPad, setSixteenLevelsPad] = useState(1);
-  const [sixteenLevelsType, setSixteenLevelsType] = useState('VELOCITY');
-
-  // ── Sample column navigation ──
-  const [sampleCol1, setSampleCol1] = useState<SampleColumn1>('Trim');
-  const [sampleCol2, setSampleCol2] = useState<SampleColumn2>('Tune');
-  const [sampleCol3, setSampleCol3] = useState<SampleColumn3>('Filter');
-  const [activeSampleCol, setActiveSampleCol] = useState<ActiveSampleColumn>(1);
-
-  // ── Chop / Loop / Reverse state ──
-  const [chopMode, setChopMode] = useState(false);
-  const [chopType, setChopType] = useState('Equal');
-  const [loopStart, setLoopStart] = useState(0);
-  const [isReversed, setIsReversed] = useState(false);
 
   // ── Sample Record settings ──
   const [recSource, setRecSource] = useState('Input 1/2');
