@@ -4,6 +4,7 @@ import type { Slice, PadSettings, SampleColumn1, SampleColumn2, SampleColumn3, A
 
 interface SampleScreenProps {
   audioBuffer: AudioBuffer | null;
+  slices: Slice[];
   activePad: number;
   padBank: string;
   padAssignments: string[];
@@ -128,7 +129,7 @@ const Waveform: React.FC<{
 };
 
 const SampleScreen: React.FC<SampleScreenProps> = ({
-  audioBuffer, activePad, padBank, padAssignments,
+  audioBuffer, slices, activePad, padBank, padAssignments,
   sampleCol1, sampleCol2, sampleCol3, activeSampleCol,
   padSettings, trimStart, trimEnd, loopStart,
   chopMode, chopType, chopMarkers, selectedChopMarker,
@@ -165,8 +166,9 @@ const SampleScreen: React.FC<SampleScreenProps> = ({
     let v1 = '', v2 = '', v3 = '';
 
     if (chopMode) {
-      p1 = 'Start'; v1 = '';
-      p2 = 'End'; v2 = '';
+      const activeSlice = slices.find(s => s.id === (activePad || 1));
+      p1 = 'Start'; v1 = activeSlice ? (activeSlice.start * 100).toFixed(1) + '%' : '';
+      p2 = 'End'; v2 = activeSlice ? (activeSlice.end * 100).toFixed(1) + '%' : '';
       p3 = 'Chop Type'; v3 = chopType;
     } else {
       if (activeSampleCol === 1) {

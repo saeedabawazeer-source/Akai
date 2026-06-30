@@ -94,7 +94,7 @@ export interface Slice {
 
 export const autoChop = (buffer: AudioBuffer, numSlices: number = 16): Slice[] => {
   const duration = buffer.duration;
-  const sliceLength = duration / numSlices;
+  const sliceLength = 1.0 / numSlices; // 0 to 1
   return Array.from({ length: numSlices }, (_, i) => ({
     id: i + 1,
     start: i * sliceLength,
@@ -142,6 +142,7 @@ export const stopAudioNodes = (nodes: any) => {
   if (!nodes) return;
   const ctx = getAudioContext();
   if (nodes.gainNode) {
+    const t = ctx.currentTime;
     const g = nodes.gainNode.gain.value;
     nodes.gainNode.gain.cancelScheduledValues(t);
     nodes.gainNode.gain.setValueAtTime(g, t);

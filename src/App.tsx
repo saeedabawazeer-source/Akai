@@ -685,6 +685,7 @@ export default function App() {
 
     const sampleScreenProps = {
       audioBuffer,
+      slices,
       activePad: activePad || 1,
       padBank,
       padAssignments,
